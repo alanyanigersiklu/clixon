@@ -46,11 +46,14 @@ include/clixon_config.h
 lib/src/build.c
 lib/clixon/clixon.h
 
-build-root/*.tar.xz
+build-root/*.tar*
 build-root/*.rpm
+build-root/.version
 build-root/rpmbuild
+build-root/debbuild
 
 util/clixon_util_datastore
+util/clixon_util_grpc
 util/clixon_util_insert
 util/clixon_util_json
 util/clixon_util_path
@@ -67,3 +70,4 @@ test/site.sh
 test/vagrant/site.mk
 test/cicd/site.mk
 doc/html
+
