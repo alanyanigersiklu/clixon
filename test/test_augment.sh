@@ -38,6 +38,7 @@ cat <<EOF > $cfg
   <CLICON_RESTCONF_PRETTY>false</CLICON_RESTCONF_PRETTY>
   <CLICON_XMLDB_DIR>/usr/local/var/$APPNAME</CLICON_XMLDB_DIR>
   <CLICON_MODULE_LIBRARY_RFC7895>true</CLICON_MODULE_LIBRARY_RFC7895>
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -163,19 +164,20 @@ if [ $BE -ne 0 ]; then
     fi
     new "start backend -s init -f $cfg"
     start_backend -s init -f $cfg
+
+    new "wait backend"
+    wait_backend
 fi
-new "waiting"
-wait_backend
+
 
 if [ $RC -ne 0 ]; then
-
     new "kill old restconf daemon"
     stop_restconf_pre
 
     new "start restconf daemon"
     start_restconf -f $cfg
 
-    new "waiting"
+    new "wait restconf"
     wait_restconf
 fi
 
@@ -189,7 +191,7 @@ expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><edit-config><target><ca
   </interface></interfaces></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
 
 new "netconf verify get with refined ports"
-expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><candidate/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\"><interface xmlns:mymod=\"urn:example:augment\"><name>e1</name><type>mymod:some-new-iftype</type><mymod:mandatory-leaf>true</mymod:mandatory-leaf><mymod:port>80</mymod:port><mymod:lport>8080</mymod:lport></interface></interfaces></data></rpc-reply>]]>]]>$"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><candidate/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\"><interface xmlns:mymod=\"urn:example:augment\"><name>e1</name><type>mymod:some-new-iftype</type><mymod:mandatory-leaf>true</mymod:mandatory-leaf><mymod:port>80</mymod:port><mymod:lport>8080</mymod:lport></interface></interfaces>"
 
 new "netconf set identity defined in other"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><edit-config><target><candidate/></target><config><interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">
@@ -260,17 +262,15 @@ if [ $RC -ne 0 ]; then
     stop_restconf 
 fi
 
-if [ $BE -eq 0 ]; then
-    exit # BE
+if [ $BE -ne 0 ]; then
+    new "Kill backend"
+    # Check if premature kill
+    pid=$(pgrep -u root -f clixon_backend)
+    if [ -z "$pid" ]; then
+	err "backend already dead"
+    fi
+    # kill backend
+    stop_backend -f $cfg
 fi
-
-new "Kill backend"
-# Check if premature kill
-pid=$(pgrep -u root -f clixon_backend)
-if [ -z "$pid" ]; then
-    err "backend already dead"
-fi
-# kill backend
-stop_backend -f $cfg
 
 rm -rf $dir

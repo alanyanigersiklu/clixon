@@ -85,6 +85,7 @@ cat <<EOF > $cfg
   <CLICON_NACM_RECOVERY_USER>$recovery</CLICON_NACM_RECOVERY_USER>
   <CLICON_NACM_MODE>internal</CLICON_NACM_MODE>
   <CLICON_NACM_CREDENTIALS>$cred</CLICON_NACM_CREDENTIALS>
+  $RESTCONFIG
 </clixon-config>
 EOF
     if [ $BE -ne 0 ]; then

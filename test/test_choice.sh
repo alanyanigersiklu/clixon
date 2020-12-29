@@ -28,6 +28,7 @@ cat <<EOF > $cfg
   <CLICON_RESTCONF_PRETTY>false</CLICON_RESTCONF_PRETTY>
   <CLICON_BACKEND_PIDFILE>/usr/local/var/$APPNAME/$APPNAME.pidfile</CLICON_BACKEND_PIDFILE>
   <CLICON_XMLDB_DIR>/usr/local/var/$APPNAME</CLICON_XMLDB_DIR>
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -153,16 +154,16 @@ new "netconf set protocol tcp"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><edit-config><target><candidate/></target><config><system xmlns=\"urn:example:config\"><protocol><tcp/></protocol></system></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
 
 new "netconf get protocol tcp"
-expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><candidate/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><system xmlns=\"urn:example:config\"><protocol><tcp/></protocol></system></data></rpc-reply>]]>]]>$"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><candidate/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><system xmlns=\"urn:example:config\"><protocol><tcp/></protocol></system>"
 
 new "netconf commit protocol tcp"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><commit/></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
 
 new "netconf changing from TCP to UDP (RFC7950 7.9.6)"
-expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS message-id=\"101\" xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"><edit-config><target><candidate/></target><config><system xmlns=\"urn:example:config\"><protocol><udp nc:operation=\"create\"/></protocol></system></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS message-id=\"101\" xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"><ok/></rpc-reply>]]>]]>$"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"><edit-config><target><candidate/></target><config><system xmlns=\"urn:example:config\"><protocol><udp nc:operation=\"create\"/></protocol></system></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"><ok/></rpc-reply>]]>]]>$"
 
 new "netconf get protocol udp"
-expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><candidate/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><system xmlns=\"urn:example:config\"><protocol><udp/></protocol></system></data></rpc-reply>]]>]]>$"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><candidate/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><system xmlns=\"urn:example:config\"><protocol><udp/></protocol></system>"
 
 new "netconf commit protocol udp"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><commit/></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
@@ -184,22 +185,22 @@ new "restconf set protocol tcp+udp fail again"
 expectpart "$(curl $CURLOPTS -X PUT -H "Content-Type: application/yang-data+json" $RCPROTO://localhost/restconf/data/system:system/protocol -d '{"system:protocol":{"tcp": [null], "udp": [null]}}')" 0 "HTTP/1.1 400 Bad Request" '{"ietf-restconf:errors":{"error":{"error-type":"application","error-tag":"bad-element","error-info":{"bad-element":"tcp"},"error-severity":"error","error-message":"Element in choice statement already exists"}}}'
 
 new "cli set protocol udp"
-expectfn "$clixon_cli -1 -f $cfg -l o set system protocol udp" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o set system protocol udp)" 0 "^$"
 
 new "cli get protocol udp"
-expectfn "$clixon_cli -1 -f $cfg -l o show configuration cli " 0 "^set system protocol udp$"
+expectpart "$($clixon_cli -1 -f $cfg -l o show configuration cli)" 0 "set system protocol" "set system protocol udp"
 
 new "cli change protocol to tcp"
-expectfn "$clixon_cli -1 -f $cfg -l o set system protocol tcp" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o set system protocol tcp)" 0 "^$"
 
 new "cli get protocol tcp"
-expectfn "$clixon_cli -1 -f $cfg -l o show configuration cli " 0 "^set system protocol tcp$"
+expectpart "$($clixon_cli -1 -f $cfg -l o show configuration cli)" 0 "set system protocol" "set system protocol tcp"
 
 new "cli delete all"
-expectfn "$clixon_cli -1 -f $cfg -l o delete all" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o delete all)" 0 "^$"
 
 new "commit"
-expectfn "$clixon_cli -1 -f $cfg -l o commit" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o commit)" 0 "^$"
 
 # Second shorthand (no case)
 new "netconf set protocol both udp and tcp"
@@ -215,7 +216,7 @@ new "netconf set shorthand tcp"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><edit-config><target><candidate/></target><config><system xmlns=\"urn:example:config\"><shorthand><tcp/></shorthand></system></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
 
 new "netconf changing from TCP to UDP (RFC7950 7.9.6)"
-expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS message-id=\"101\" xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"><edit-config><target><candidate/></target><config><system xmlns=\"urn:example:config\"><shorthand><udp/></shorthand></system></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS message-id=\"101\" xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"><ok/></rpc-reply>]]>]]>$"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"><edit-config><target><candidate/></target><config><system xmlns=\"urn:example:config\"><shorthand><udp/></shorthand></system></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"><ok/></rpc-reply>]]>]]>$"
 
 new "netconf get shorthand udp"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><candidate/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><system xmlns=\"urn:example:config\"><shorthand><udp/></shorthand></system></data></rpc-reply>]]>]]>$"

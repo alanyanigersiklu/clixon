@@ -66,7 +66,7 @@
 #include <clixon/clixon_backend.h> 
 
 /* Command line options to be passed to getopt(3) */
-#define BACKEND_EXAMPLE_OPTS "rsS:iuUt:v:"
+#define BACKEND_EXAMPLE_OPTS "rsS:iuUt:v:n:"
 
 /*! Variable to control if reset code is run.
  * The reset code inserts "extra XML" which assumes ietf-interfaces is
@@ -118,6 +118,11 @@ static int _transaction_log = 0;
  */
 static char *_validate_fail_xpath = NULL;
 static int   _validate_fail_toggle = 0; /* fail at validate and commit */
+
+/* -n <ns>
+ * Network namespace for starting restconf process in another namespace
+*/
+static char *_proc_netns = NULL;
 
 /* forward */
 static int example_stream_timer_setup(clicon_handle h);
@@ -297,14 +302,21 @@ example_rpc(clicon_handle h,            /* Clicon handle */
 {
     int    retval = -1;
     cxobj *x = NULL;
+    cxobj *xp;
     char  *namespace;
+    char  *msgid;
 
     /* get namespace from rpc name, return back in each output parameter */
     if ((namespace = xml_find_type_value(xe, NULL, "xmlns", CX_ATTR)) == NULL){
 	clicon_err(OE_XML, ENOENT, "No namespace given in rpc %s", xml_name(xe));
 	goto done;
     }
-    cprintf(cbret, "<rpc-reply xmlns=\"%s\">", NETCONF_BASE_NAMESPACE);
+    cprintf(cbret, "<rpc-reply xmlns=\"%s\"", NETCONF_BASE_NAMESPACE);
+    if ((xp = xml_parent(xe)) != NULL &&
+	(msgid = xml_find_value(xp, "message-id"))){
+	cprintf(cbret, " message-id=\"%s\">", msgid);
+    }
+    cprintf(cbret, ">");
     if (!xml_child_nr_type(xe, CX_ELMNT))
 	cprintf(cbret, "<ok/>");
     else while ((x = xml_child_each(xe, x, CX_ELMNT)) != NULL) {
@@ -395,7 +407,7 @@ example_statedata(clicon_handle h,
 	}
 	else{
 	    cxobj *x1;
-	    if ((fp = fopen(_state_file, "r")) < 0){
+	    if ((fp = fopen(_state_file, "r")) == NULL){
 		clicon_err(OE_UNIX, errno, "open(%s)", _state_file);
 		goto done;
 	    }
@@ -916,12 +928,15 @@ example_reset(clicon_handle h,
     cxobj *xt = NULL;
     int    ret;
     cbuf  *cbret = NULL;
+    yang_stmt *yspec;
 
     if (!_reset)
 	goto ok; /* Note not enabled by default */
+	
+    yspec = clicon_dbspec_yang(h);	
     if (clixon_xml_parse_string("<config><interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
 				"<interface><name>lo</name><type>ex:loopback</type>"
-				"</interface></interfaces></config>", YB_NONE, NULL, &xt, NULL) < 0)
+				"</interface></interfaces></config>", YB_MODULE, yspec, &xt, NULL) < 0)
 	goto done;
     /* Replace parent w first child */
     if (xml_rootchild(xt, 0, &xt) < 0)
@@ -977,7 +992,7 @@ example_daemon(clicon_handle h)
     /* Read state file (or should this be in init/start?) */
     if (_state && _state_file && _state_file_init){
 	yspec = clicon_dbspec_yang(h);
-	if ((fp = fopen(_state_file, "r")) < 0){
+	if ((fp = fopen(_state_file, "r")) == NULL){
 	    clicon_err(OE_UNIX, errno, "open(%s)", _state_file);
 	    goto done;
 	}
@@ -1072,6 +1087,9 @@ clixon_plugin_init(clicon_handle h)
 	case 'v': /* validate fail */
 	    _validate_fail_xpath = optarg;
 	    break;
+	case 'n': /* process restconf namespace*/
+	    _proc_netns = optarg;
+	    break;
 	}
 
     /* Example stream initialization:
@@ -1115,7 +1133,10 @@ clixon_plugin_init(clicon_handle h)
 			      "example"/* Xml tag when callback is made */
 			      ) < 0)
 	goto done;
-    /* Called after the regular system copy_config callback */
+    /* Called before the regular system copy_config callback 
+     * If you want to have it called _after_ the system callback, place this call in 
+     * the _start function.
+     */
     if (rpc_callback_register(h, example_copy_extra, 
 			      NULL, 
 			      NETCONF_BASE_NAMESPACE,
@@ -1132,7 +1153,6 @@ clixon_plugin_init(clicon_handle h)
     else
 	if (upgrade_callback_register(h, xml_changelog_upgrade, NULL, NULL) < 0)
 	    goto done;
-
     /* Return plugin API */
     return &api;
  done:

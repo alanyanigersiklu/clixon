@@ -39,6 +39,7 @@ cat <<EOF > $cfg
   <CLICON_BACKEND_PIDFILE>/usr/local/var/$APPNAME/$APPNAME.pidfile</CLICON_BACKEND_PIDFILE>
   <CLICON_XMLDB_DIR>$dir</CLICON_XMLDB_DIR>
   <CLICON_XMLDB_FORMAT>$format</CLICON_XMLDB_FORMAT>
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -213,7 +214,7 @@ new "compile $cfile"
 # -I /usr/local_include for eg freebsd
 expectpart "$($CC -g -Wall -rdynamic -fPIC -shared -I/usr/local/include $cfile -o $sofile)" 0 ""
 
-new "test params: -s running -f $cfg"
+new "test params: -s init -f $cfg"
 
 if [ $BE -ne 0 ]; then
     new "kill old backend"

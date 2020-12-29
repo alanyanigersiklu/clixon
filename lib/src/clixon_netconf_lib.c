@@ -1184,7 +1184,7 @@ netconf_data_not_unique_xml(cxobj **xret,
     if ((xerr = xml_new("rpc-error", *xret, CX_ELMNT)) == NULL)
 	goto done;
     if (clixon_xml_parse_va(YB_NONE, NULL, &xerr, NULL,
-			    "<error-type>protocol</error-type>"
+			    "<error-type>application</error-type>"
 			    "<error-tag>operation-failed</error-tag>"
 			    "<error-app-tag>data-not-unique</error-app-tag>"
 			    "<error-severity>error</error-severity>") < 0)
@@ -1379,12 +1379,6 @@ netconf_module_load(clicon_handle h)
     if (clicon_option_bool(h, "CLICON_XML_CHANGELOG"))
 	if (yang_spec_parse_module(h, "clixon-xml-changelog", NULL, yspec)< 0)
 	    goto done;
-    /* Clixon restconf daemon */
-    if (yang_spec_parse_module(h, "clixon-restconf", NULL, yspec)< 0)
-	goto done;
-    /* Load restconf collection */
-    if (yang_spec_parse_module(h, "ietf-netconf-list-pagination", NULL, yspec)< 0)
-	goto done;    
     retval = 0;
  done:
     return retval;
@@ -1412,6 +1406,7 @@ netconf_db_find(cxobj *xn,
     cxobj *xi;
     char  *db = NULL;
 
+    /* XXX should use prefix cf edit_config */
     if ((xs = xml_find(xn, name)) == NULL)
 	goto done;
     if ((xi = xml_child_i(xs, 0)) == NULL)
@@ -1541,7 +1536,7 @@ netconf_hello_server(clicon_handle h,
 
     module_set_id = clicon_option_str(h, "CLICON_MODULE_SET_ID");
 
-    cprintf(cb, "<hello xmlns=\"%s\">", NETCONF_BASE_NAMESPACE);
+    cprintf(cb, "<hello xmlns=\"%s\" message-id=\"%u\">", NETCONF_BASE_NAMESPACE, 42);
     cprintf(cb, "<capabilities>");
     cprintf(cb, "<capability>urn:ietf:params:netconf:base:1.0</capability>");
     /* Check if RFC7895 loaded and revision found */

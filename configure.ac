@@ -43,12 +43,13 @@ AC_INIT(lib/clixon/clixon.h.in)
 # Default CFLAGS and INSTALLFLAGS unless set by environment
 : ${CFLAGS="-O2 -Wall"}
 : ${INSTALLFLAGS="-s"}
+: ${LINKAGE=dynamic}
 
 # where autotool scripts are: install-sh, config.sub, config.guess
 AC_CONFIG_AUX_DIR(aux)
 
 CLIXON_VERSION_MAJOR="4"
-CLIXON_VERSION_MINOR="9"
+CLIXON_VERSION_MINOR="10"
 CLIXON_VERSION_PATCH="0"
 CLIXON_VERSION="\"${CLIXON_VERSION_MAJOR}.${CLIXON_VERSION_MINOR}.${CLIXON_VERSION_PATCH}.PRE\""
 
@@ -93,6 +94,7 @@ AC_SUBST(INSTALLFLAGS)
 AC_SUBST(CLIXON_DEFAULT_CONFIG)
 AC_SUBST(LIBS)
 AC_SUBST(SH_SUFFIX)
+AC_SUBST(LINKAGE)
 AC_SUBST(with_restconf) # Set to evhtp or fcgi -> compile apps/restconf
 AC_SUBST(with_libxml2)  
 AC_SUBST(enable_optyangs) 
@@ -248,6 +250,7 @@ if test "x${with_restconf}" != "x"; then
    fi
    AC_MSG_RESULT(www user is $wwwuser)	
    AC_DEFINE_UNQUOTED(WWWUSER, "$wwwuser", [WWW user for restconf daemon])
+   AC_DEFINE_UNQUOTED(WWWDIR, "$wwwdir", [WWW dir for restconf daemon])
 fi
 
 # Set default config file location
@@ -270,7 +273,7 @@ if test "${with_libxml2}"; then
 fi 
 
 #
-AC_CHECK_FUNCS(inet_aton sigaction sigvec strlcpy strsep strndup alphasort versionsort getpeereid)
+AC_CHECK_FUNCS(inet_aton sigaction sigvec strlcpy strsep strndup alphasort versionsort getpeereid setns)
 
 # Checks for getsockopt options for getting unix socket peer credentials on
 # Linux

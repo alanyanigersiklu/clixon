@@ -997,8 +997,8 @@ yang_find_schemanode(yang_stmt *yn,
  * @retval     NULL      No prefix found. This is an error
  * @retval     prefix    OK: Prefix as char* pointer into yang tree
  * @code
- * char *myprefix;
- * myprefix = yang_find_myprefix(ys);
+ *   char *myprefix;
+ *   myprefix = yang_find_myprefix(ys);
  * @endcode
  */
 char *
@@ -2625,10 +2625,8 @@ schema_nodeid_iterate(yang_stmt    *yn,
 }
 
 /*! Given an absolute schema-nodeid (eg /a/b/c) find matching yang spec  
- * @param[in]  yspec         Yang specification.
- * @param[in]  yn            Original yang stmt (where call is made) if any
+ * @param[in]  yn            Original yang stmt (where call is made)
  * @param[in]  schema_nodeid Absolute schema-node-id, ie /a/b
- * @param[in]  keyword       A schemode of this type, or -1 if any
  * @param[out] yres          Result yang statement node, or NULL if not found
  * @retval    -1             Error, with clicon_err called
  * @retval     0             OK , with result in yres
@@ -2680,15 +2678,19 @@ yang_abs_schema_nodeid(yang_stmt    *yn,
 	}
     }
     /* Make a namespace context from yang for the prefixes (names) of nodeid_cvv */
-    if (xml_nsctx_yang(yn, &nsc) < 0)
-	goto done;
+    if (yang_keyword_get(yn) == Y_SPEC){
+	if (xml_nsctx_yangspec(yn, &nsc) < 0)
+	    goto done;
+    }
+    else if (xml_nsctx_yang(yn, &nsc) < 0)
+	    goto done;
     /* Since this is an _absolute_ schema nodeid start from top 
      * Get namespace */
     cv = cvec_i(nodeid_cvv, 0);
     prefix = cv_name_get(cv);
     if ((ns = xml_nsctx_get(nsc, prefix)) == NULL){
-	clicon_err(OE_YANG, EFAULT, "No namespace for prefix: %s in schema node identifier: %s in module %s",
-		   prefix, schema_nodeid, yang_argument_get(ys_module(yn)));
+	clicon_err(OE_YANG, EFAULT, "No namespace for prefix: %s in schema node identifier: %s",
+		   prefix, schema_nodeid);
 	goto done;
     }
     /* Get yang module */
@@ -2855,7 +2857,7 @@ yang_config(yang_stmt *ys)
  *
  * config statement is default true. 
  * @param[in] ys  Yang statement
- * @retval    0   Node or one of its ancestor has config false
+ * @retval    0   Node or one of its ancestor has config false or is RPC or notification
  * @retval    1   Neither node nor any of its ancestors has config false
  */
 int
@@ -2866,6 +2868,8 @@ yang_config_ancestor(yang_stmt *ys)
     yp = ys;
     do {
 	if (yang_config(yp) == 0)
+	    return 0;
+	if (yang_keyword_get(yp) == Y_INPUT || yang_keyword_get(yp) == Y_OUTPUT || yang_keyword_get(yp) == Y_NOTIFICATION)
 	    return 0;
     } while((yp = yang_parent_get(yp)) != NULL);
     return 1;
@@ -3234,6 +3238,65 @@ yang_anydata_add(yang_stmt *yp,
     }
  done:
     return ys;
+}
+
+/*! Find extension argument and return extension argument value
+ * @param[in]  ys     Yang statement
+ * @param[in]  name   Name of the extension 
+ * @param[in]  ns     The namespace
+ * @param[out] value  clispec operator (hide/none) - direct pointer into yang, dont free
+ * This is for extensions with an argument
+ * @code
+ *     char *value = NULL;
+ *     if (yang_extension_value(ys, "mymode", "urn:example:lib", &value) < 0)
+ *        err;
+ *     if (value != NULL){
+ *        // use extension value
+ *     }
+ * @endcode
+ */
+int
+yang_extension_value(yang_stmt *ys,
+		     char      *name,
+		     char      *ns,
+		     char     **value)
+{
+    int        retval = -1;
+    yang_stmt *yext;
+    yang_stmt *ymod;
+    cg_var    *cv;
+    char      *prefix = NULL;
+    cbuf      *cb = NULL;
+
+    if ((cb = cbuf_new()) == NULL){
+	clicon_err(OE_UNIX, errno, "cbuf_new");
+	goto done;
+    }
+    yext = NULL; /* This loop gets complicated in trhe case the extension is augmented */
+    while ((yext = yn_each(ys, yext)) != NULL) {
+	if (yang_keyword_get(yext) != Y_UNKNOWN)
+	    continue;
+	if ((ymod = ys_module(yext)) == NULL)
+	    continue;
+	if (yang_find_prefix_by_namespace(ymod, ns, &prefix) < 0)
+	    goto ok;
+	cprintf(cb, "%s:%s", prefix, name);
+	if (strcmp(yang_argument_get(yext), cbuf_get(cb)) != 0)
+	    continue;
+	break;
+    }
+    if (yext != NULL){ /* Found */
+	if ((cv = yang_cv_get(yext)) == NULL)
+	    goto ok;
+	if (value)
+	    *value = cv_string_get(cv);
+    }
+ ok:
+    retval = 0;
+ done:
+    if (cb)
+	cbuf_free(cb);
+    return retval;
 }
 
 #ifdef XML_EXPLICIT_INDEX

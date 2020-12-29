@@ -26,10 +26,6 @@ module clixon-example {
     import iana-if-type {
       prefix ianaift;
     }
-    import ietf-datastores {
-      prefix ds;
-    }
-
     /* Example interface type for tests, local callbacks, etc */
     identity eth {
 	base if:interface-type;
@@ -37,20 +33,16 @@ module clixon-example {
     identity loopback {
 	base if:interface-type;
     }
-    /* Generic config data */
-    container table{
-	list parameter{
-	    key name;
-	    leaf name{
+    /* Translation function example - See also example_cli */
+    container translate{
+	description "dont have lists directly under top since restconf cant address list directly";
+	list translate{
+	    key k;
+	    leaf k{
 		type string;
 	    }
 	    leaf value{
 		type string;
-	    }
-	    leaf stat{
-		description "Inline state data for example application";
-		config false;
-		type int32;
 	    }
 	}
     }

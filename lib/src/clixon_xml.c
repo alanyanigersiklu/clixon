@@ -376,7 +376,6 @@ char*
 xml_name(cxobj *xn)
 {
     if (xn == NULL) {
-	clicon_err(OE_XML, EINVAL, "x is NULL");
 	return NULL;
     }
     return xn->x_name;
@@ -570,7 +569,6 @@ cxobj*
 xml_parent(cxobj *xn)
 {
     if (xn == NULL) {
-	clicon_err(OE_XML, EINVAL, "xn is NULL");
 	return NULL;
     }
     return xn->x_up;
@@ -713,7 +711,6 @@ enum cxobj_type
 xml_type(cxobj *xn)
 {
     if (xn == NULL) {
-	clicon_err(OE_XML, EINVAL, "xn is NULL");
 	return CX_ERROR;
     }
     return xn->x_type;
@@ -808,7 +805,6 @@ xml_child_i(cxobj *xn,
 	    int    i)
 {
     if (xn == NULL || i < 0) {
-	clicon_err(OE_XML, EINVAL, "xn is NULL or invalid child nr");
 	return NULL;
     }
     if (!is_element(xn))
@@ -1221,7 +1217,6 @@ xml_find(cxobj *xp,
     cxobj *x = NULL;
 
     if (xp == NULL || name == NULL) {
-	clicon_err(OE_XML, EINVAL, "xp or name is NULL");
 	return NULL;
     }
     if (!is_element(xp))
@@ -1702,7 +1697,7 @@ xml_find_type_value(cxobj           *xt,
  *
  * The value can be of an attribute only
  * @param[in]   xt          xml tree node
- * @param[in]   prefix      Prefix (namespace local name) or NULL
+ * @param[in]   prefix      Prefix (namespace local name) or NULL (any prefix)
  * @param[in]   name        name of xml tree node (eg attr name or "body")
  * @param[in]   type        Matching type or -1 for any
  * @retval      val         Pointer to the name string
@@ -1838,8 +1833,7 @@ xml_free(cxobj *x)
     cxobj *xc;
 
     if (x == NULL){
-	clicon_err(OE_XML, EINVAL, "x is NULL");
-	return -1;
+	return 0;
     }
     if (x->x_name)
 	free(x->x_name);

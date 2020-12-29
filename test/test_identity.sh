@@ -28,6 +28,7 @@ cat <<EOF > $cfg
   <CLICON_SOCK>/usr/local/var/$APPNAME/$APPNAME.sock</CLICON_SOCK>
   <CLICON_BACKEND_PIDFILE>/usr/local/var/$APPNAME/$APPNAME.pidfile</CLICON_BACKEND_PIDFILE>
   <CLICON_XMLDB_DIR>/usr/local/var/$APPNAME</CLICON_XMLDB_DIR>
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -211,22 +212,22 @@ new "netconf validate (expect fail)"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><validate><source><candidate/></source></validate></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><rpc-error><error-type>application</error-type><error-tag>operation-failed</error-tag><error-severity>error</error-severity><error-message>Identityref validation failed, foo:bar not derived from crypto-alg</error-message></rpc-error></rpc-reply>]]>]]>$"
 
 new "cli set crypto to mc:aes"
-expectfn "$clixon_cli -1 -f $cfg -l o set crypto mc:aes" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o set crypto mc:aes)" 0 "^$"
 
 new "cli validate"
-expectfn "$clixon_cli -1 -f $cfg -l o validate" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o validate)" 0 "^$"
 
 new "cli set crypto to aes"
-expectfn "$clixon_cli -1 -f $cfg -l o set crypto aes" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o set crypto aes)" 0 "^$"
 
 new "cli validate"
-expectfn "$clixon_cli -1 -f $cfg -l o validate" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o validate)" 0 "^$"
 
 new "cli set crypto to des:des3"
-expectfn "$clixon_cli -1 -f $cfg -l o set crypto des:des3" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o set crypto des:des3)" 0 "^$"
 
 new "cli validate"
-expectfn "$clixon_cli -1 -f $cfg -l o validate" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o validate)" 0 "^$"
 
 new "Netconf set acl-type"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><edit-config><target><candidate/></target><config><acls xmlns=\"urn:example:my-crypto\"><acl><name>x</name><type>mc:ipv4-acl-type</type></acl></acls></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
@@ -244,20 +245,20 @@ new "netconf discard-changes"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><discard-changes/></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
 
 new "CLI set acl-type"
-expectfn "$clixon_cli -1 -f $cfg -l o set acls acl x type mc:ipv4-acl-type" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o set acls acl x type mc:ipv4-acl-type)" 0 "^$"
 
 new "cli validate"
-expectfn "$clixon_cli -1 -f $cfg -l o validate" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o validate)" 0 "^$"
 
 new "CLI set wrong acl-type"
-expectfn "$clixon_cli -1 -f $cfg -l o set acls acl x type undefined" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o set acls acl x type undefined)" 0 "^$"
 
 new "cli validate acl-type"
 expectpart "$($clixon_cli -1 -f $cfg -l o validate)" 255 "Validate failed. Edit and try again or discard changes: application operation-failed Identityref validation failed, undefined not derived from acl-base"
 
 # test empty identityref list
 new "cli set empty"
-expectfn "$clixon_cli -1 -f $cfg -l o set e undefined" 0 "^$"
+expectpart "$($clixon_cli -1 -f $cfg -l o set e undefined)" 0 "^$"
 
 new "cli validate empty"
 expectpart "$($clixon_cli -1 -f $cfg -l o validate)" 255 "Validate failed. Edit and try again or discard changes: application operation-failed Identityref validation failed, undefined not derived from acl-base"
@@ -276,7 +277,7 @@ new "restconf get own identity"
 expectpart "$(curl $CURLOPTS -X GET $RCPROTO://localhost/restconf/data/example:crypto)" 0 'HTTP/1.1 200 OK' '{"example:crypto":"aes"}'
 
 new "netconf get own identity as set by restconf"
-expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><running/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><crypto xmlns=\"urn:example:my-crypto\">aes</crypto></data></rpc-reply>]]>]]>$"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><running/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><crypto xmlns=\"urn:example:my-crypto\">aes</crypto>"
 
 new "restconf delete identity"
 expectpart "$(curl $CURLOPTS -X DELETE $RCPROTO://localhost/restconf/data/example:crypto)" 0 "HTTP/1.1 204 No Content"
@@ -297,7 +298,7 @@ new "restconf get other identity"
 expectpart "$(curl $CURLOPTS -X GET $RCPROTO://localhost/restconf/data/example:crypto)" 0 'HTTP/1.1 200 OK' '{"example:crypto":"example-des:des3"}'
 
 new "netconf get other identity"
-expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><running/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><crypto xmlns=\"urn:example:my-crypto\" xmlns:des=\"urn:example:des\">des:des3</crypto></data></rpc-reply>]]>]]>$"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><running/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><crypto xmlns=\"urn:example:my-crypto\" xmlns:des=\"urn:example:des\">des:des3</crypto>"
 
 new "restconf delete identity"
 expectpart "$(curl $CURLOPTS -X DELETE $RCPROTO://localhost/restconf/data/example:crypto)" 0 "HTTP/1.1 204 No Content"
@@ -313,7 +314,7 @@ new "restconf get other identity (set by netconf)"
 expectpart "$(curl $CURLOPTS -X GET $RCPROTO://localhost/restconf/data/example:crypto)" 0 'HTTP/1.1 200 OK' '{"example:crypto":"example-des:des3"}'
 
 new "netconf get other identity"
-expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><running/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><crypto xmlns=\"urn:example:my-crypto\" xmlns:des=\"urn:example:des\">des:des3</crypto></data></rpc-reply>]]>]]>$"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><get-config><source><running/></source></get-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><data><crypto xmlns=\"urn:example:my-crypto\" xmlns:des=\"urn:example:des\">des:des3</crypto>"
 
 if [ $RC -ne 0 ]; then
     new "Kill restconf daemon"

@@ -28,6 +28,7 @@ cat <<EOF > $cfg
   <CLICON_SOCK>/usr/local/var/$APPNAME/$APPNAME.sock</CLICON_SOCK>
   <CLICON_BACKEND_PIDFILE>/usr/local/var/$APPNAME/$APPNAME.pidfile</CLICON_BACKEND_PIDFILE>
   <CLICON_XMLDB_DIR>/usr/local/var/$APPNAME</CLICON_XMLDB_DIR>
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -157,10 +158,28 @@ expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><edit-config xmlns=\"urn
 
 # Negative errors (namespace/module missing)
 new "netconf wrong rpc namespace: should fail"
-expecteof "$clixon_netconf -qf $cfg" 0 "<rpc xmlns=\"urn:example:xxx\"><get/></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><rpc-error><error-type>application</error-type><error-tag>unknown-element</error-tag><error-info><bad-element>get</bad-element></error-info><error-severity>error</error-severity><error-message>Unrecognized RPC (wrong namespace?)</error-message></rpc-error></rpc-reply>]]>]]>$"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc xmlns=\"urn:example:xxx\" message-id=\"42\"><get/></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><rpc-error><error-type>application</error-type><error-tag>unknown-element</error-tag><error-info><bad-element>get</bad-element></error-info><error-severity>error</error-severity><error-message>Unrecognized RPC (wrong namespace?)</error-message></rpc-error></rpc-reply>]]>]]>$"
 
 new "restconf wrong rpc: should fail"
-expectpart "$(curl $CURLOPTS -X POST -H "Content-Type: application/yang-data+json" u $RCPROTO://localhost/restconf/operations/clixon-foo:get)" 0 'HTTP/1.1 412 Precondition Failed' '{"ietf-restconf:errors":{"error":{"error-type":"protocol","error-tag":"operation-failed","error-severity":"error","error-message":"yang module not found"}}}'
+expectpart "$(curl $CURLOPTS -X POST -H "Content-Type: application/yang-data+json" $RCPROTO://localhost/restconf/operations/clixon-foo:get)" 0 'HTTP/1.1 412 Precondition Failed' '{"ietf-restconf:errors":{"error":{"error-type":"protocol","error-tag":"operation-failed","error-severity":"error","error-message":"yang module not found"}}}'
+
+# test rpc lists with / without keys
+LIST='<u0 xmlns="urn:example:clixon"><uk>foo</uk></u0><u0 xmlns="urn:example:clixon"><uk>bar</uk></u0><u0 xmlns="urn:example:clixon"><uk>bar</uk></u0>'
+# On docker /fcgi the return is bar,foo,bar                                                          
+new "netconf example rpc input list without key with non-unique entries"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><example xmlns=\"urn:example:clixon\"><x>mandatory</x>$LIST</example></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><x xmlns=\"urn:example:clixon\">mandatory</x><y xmlns=\"urn:example:clixon\">42</y>" '<u0 xmlns="urn:example:clixon">' '<uk>foo</uk></u0><u0 xmlns="urn:example:clixon"><uk>bar</uk></u0>' "</rpc-reply>]]>]]>$"
+
+LIST='<u1 xmlns="urn:example:clixon"><uk>bar</uk><val>1</val></u1><u1 xmlns="urn:example:clixon"><uk>foo</uk><val>2</val></u1>'
+new "netconf example rpc input list with key"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><example xmlns=\"urn:example:clixon\"><x>mandatory</x>$LIST</example></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><x xmlns=\"urn:example:clixon\">mandatory</x><y xmlns=\"urn:example:clixon\">42</y>$LIST</rpc-reply>]]>]]>$"
+
+LIST='<u1 xmlns="urn:example:clixon"><uk>bar</uk><val>1</val></u1><u1 xmlns="urn:example:clixon"><val>2</val></u1>'
+new "netconf example rpc input key list without key (should fail)"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><example xmlns=\"urn:example:clixon\"><x>mandatory</x>$LIST</example></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><rpc-error><error-type>application</error-type><error-tag>missing-element</error-tag><error-info><bad-element>uk</bad-element></error-info><error-severity>error</error-severity><error-message>Mandatory key</error-message></rpc-error></rpc-reply>]]>]]>$"
+
+LIST='<u1 xmlns="urn:example:clixon"><uk>bar</uk><val>1</val></u1><u1 xmlns="urn:example:clixon"><uk>bar</uk><val>2</val></u1>'
+new "netconf example rpc input list with non-unique keys (should fail)"
+expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><example xmlns=\"urn:example:clixon\"><x>mandatory</x>$LIST</example></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><rpc-error><error-type>application</error-type><error-tag>operation-failed</error-tag><error-app-tag>data-not-unique</error-app-tag><error-severity>error</error-severity><error-info><non-unique><uk>bar</uk></non-unique></error-info></rpc-error></rpc-reply>]]>]]>$"
 
 if [ $RC -ne 0 ]; then
     new "Kill restconf daemon"

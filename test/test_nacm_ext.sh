@@ -36,6 +36,7 @@ cat <<EOF > $cfg
   <CLICON_NACM_MODE>external</CLICON_NACM_MODE>
   <CLICON_NACM_FILE>$nacmfile</CLICON_NACM_FILE>
   <CLICON_NACM_CREDENTIALS>none</CLICON_NACM_CREDENTIALS>
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -191,22 +192,22 @@ new "guest edit nacm"
 expectpart "$(curl -u guest:bar $CURLOPTS -X PUT -H "Content-Type: application/yang-data+json" -d '{"nacm-example:x": 3}' $RCPROTO://localhost/restconf/data/nacm-example:x)" 0 "HTTP/1.1 403 Forbidden" '{"ietf-restconf:errors":{"error":{"error-type":"application","error-tag":"access-denied","error-severity":"error","error-message":"access denied"}}}'
 
 new "cli show conf as admin"
-expectfn "$clixon_cli -1 -U andy -l o -f $cfg show conf" 0 "^x 1;$"
+expectpart "$($clixon_cli -1 -U andy -l o -f $cfg show conf)" 0 "x 1;"
 
 new "cli show conf as limited"
-expectfn "$clixon_cli -1 -U wilma -l o -f $cfg show conf" 0 "^x 1;$"
+expectpart "$($clixon_cli -1 -U wilma -l o -f $cfg show conf)" 0 "x 1;"
 
 new "cli show conf as guest"
-expectfn "$clixon_cli -1 -U guest -l o -f $cfg show conf" 255 "application access-denied"
+expectpart "$($clixon_cli -1 -U guest -l o -f $cfg show conf)" 255 "application access-denied"
 
 new "cli rpc as admin"
-expectfn "$clixon_cli -1 -U andy -l o -f $cfg rpc ipv4" 0 '<x xmlns="urn:example:clixon">ipv4</x><y xmlns="urn:example:clixon">42</y>'
+expectpart "$($clixon_cli -1 -U andy -l o -f $cfg rpc ipv4)" 0 '<x xmlns="urn:example:clixon">ipv4</x><y xmlns="urn:example:clixon">42</y>'
 
 new "cli rpc as limited"
-expectfn "$clixon_cli -1 -U wilma -l o -f $cfg rpc ipv4" 255 "access-denied default deny"
+expectpart "$($clixon_cli -1 -U wilma -l o -f $cfg rpc ipv4)" 255 "access-denied default deny"
 
 new "cli rpc as guest"
-expectfn "$clixon_cli -1 -U guest -l o -f $cfg rpc ipv4" 255 "access-denied access denied"
+expectpart "$($clixon_cli -1 -U guest -l o -f $cfg rpc ipv4)" 255 "access-denied access denied"
 
 if [ $RC -ne 0 ]; then
     new "Kill restconf daemon"

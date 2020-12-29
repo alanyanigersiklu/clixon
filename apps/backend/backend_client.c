@@ -509,6 +509,7 @@ from_client_get_config(clicon_handle h,
 	    goto done;
 	goto ok;
     }
+    /* XXX should use prefix cf edit_config */
     if ((xfilter = xml_find(xe, "filter")) != NULL){
 	if ((xpath0 = xml_find_value(xfilter, "select"))==NULL)
 	    xpath0="/";
@@ -587,6 +588,8 @@ from_client_edit_config(clicon_handle h,
     char               *attr;
     int                 autocommit = 0;
     char               *val = NULL;
+    cvec               *nsc = NULL;
+    char               *prefix = NULL;
 
     username = clicon_username_get(h);
     if ((yspec =  clicon_dbspec_yang(h)) == NULL){
@@ -616,15 +619,28 @@ from_client_edit_config(clicon_handle h,
 	    goto done;
 	goto ok;
     }
-    if ((x = xpath_first(xn, NULL, "default-operation")) != NULL){
+    if (xml_nsctx_node(xn, &nsc) < 0)
+	goto done;
+    /* Get prefix of netconf base namespace in the incoming message */
+    if (xml_nsctx_get_prefix(nsc, NETCONF_BASE_NAMESPACE, &prefix) == 0){
+	cprintf(cbx, "No appropriate prefix exists for: %s", NETCONF_BASE_NAMESPACE);
+	if (netconf_unknown_namespace(cbret, "protocol", xml_name(xn), cbuf_get(cbx)) < 0)
+	    goto done;
+	goto ok;
+    }
+    /* Get default-operation element */
+    if ((x = xpath_first(xn, nsc, "%s%sdefault-operation", prefix?prefix:"", prefix?":":"")) != NULL){
 	if (xml_operation(xml_body(x), &operation) < 0){
 	    if (netconf_invalid_value(cbret, "protocol", "Wrong operation")< 0)
 		goto done;
 	    goto ok;
 	}
     }
-    if ((xc = xpath_first(xn, NULL, "config")) == NULL){
-	if (netconf_missing_element(cbret, "protocol", "config", NULL) < 0)
+    /* Get config element */
+    if ((xc = xpath_first(xn, nsc, "%s%sconfig", prefix?prefix:"", prefix?":":"")) == NULL){
+	cprintf(cbx, "Element not found, or mismatching prefix %s for namespace %s",
+		prefix?prefix:"null", NETCONF_BASE_NAMESPACE);
+	if (netconf_missing_element(cbret, "protocol", "config", cbuf_get(cbx)) < 0)
 	    goto done;
 	goto ok;
     }
@@ -713,6 +729,8 @@ from_client_edit_config(clicon_handle h,
  ok:
     retval = 0;
  done:
+    if (nsc)
+	cvec_free(nsc);
     if (xret)
 	xml_free(xret);
     if (cbx)
@@ -822,6 +840,7 @@ from_client_delete_config(clicon_handle h,
     uint32_t             myid = ce->ce_id;
     cbuf                *cbx = NULL; /* Assist cbuf */
 
+    /* XXX should use prefix cf edit_config */
     if ((target = netconf_db_find(xe, "target")) == NULL ||
 	strcmp(target, "running")==0){
 	if (netconf_missing_element(cbret, "protocol", "target", NULL) < 0)
@@ -1661,6 +1680,7 @@ from_client_create_subscription(clicon_handle h,
     struct timeval       stop;
     cvec                *nsc = NULL;
     
+    /* XXX should use prefix cf edit_config */
     if ((nsc = xml_nsctx_init(NULL, EVENT_RFC5277_NAMESPACE)) == NULL)
 	goto done;
     if ((x = xpath_first(xe, nsc, "//stream")) != NULL)
@@ -1861,7 +1881,49 @@ from_client_restart_plugin(clicon_handle h,
     return retval;
 }
 
-/*!
+/*! Control a specific process or daemon: start/stop, etc
+ * @param[in]  h       Clicon handle 
+ * @param[in]  xe      Request: <rpc><xn></rpc> 
+ * @param[out] cbret   Return xml tree, eg <rpc-reply>..., <rpc-error.. 
+ * @param[in]  arg     client-entry
+ * @param[in]  regarg  User argument given at rpc_callback_register() 
+ * @retval     0       OK
+ * @retval    -1       Error
+ */
+static int
+from_client_process_control(clicon_handle  h,
+			    cxobj         *xe,
+			    cbuf          *cbret,
+			    void          *arg,
+			    void          *regarg)
+{
+    int      retval = -1;
+    cxobj   *x;
+    char    *name = NULL;
+    char    *operation = NULL;
+    int      status = 0;
+    
+    clicon_debug(1, "%s", __FUNCTION__);
+    if ((x = xml_find_type(xe, NULL, "name", CX_ELMNT)) != NULL)
+	name = xml_body(x);
+    if ((x = xml_find_type(xe, NULL, "operation", CX_ELMNT)) != NULL)
+	operation = xml_body(x);
+    /* Make the actual process operation */
+    if (clixon_process_operation(h, name, operation, &status) < 0)
+	goto done;
+    if (strcmp(operation, "status") == 0)
+	cprintf(cbret, "<rpc-reply xmlns=\"%s\"><status xmlns=\"%s\">%s</status></rpc-reply>",
+		NETCONF_BASE_NAMESPACE,
+		CLIXON_LIB_NS,
+		status?"true":"false");
+    else
+	cprintf(cbret, "<rpc-reply xmlns=\"%s\"><ok/></rpc-reply>", NETCONF_BASE_NAMESPACE);
+    retval = 0;
+ done:
+    return retval;
+}
+
+/*! Clixon hello to check liveness
  * @retval     0       OK
  * @retval    -1       Error
  */
@@ -1870,10 +1932,10 @@ from_client_hello(clicon_handle       h,
 		  cxobj               *x,
 		  struct client_entry *ce,
 		  cbuf                *cbret)
-    
 {
     int      retval = -1;
     uint32_t id;
+    char    *msgid;
 
     if (clicon_session_id_get(h, &id) < 0){
 	clicon_err(OE_NETCONF, ENOENT, "session_id not set");
@@ -1881,12 +1943,17 @@ from_client_hello(clicon_handle       h,
     }
     id++;
     clicon_session_id_set(h, id);
-    cprintf(cbret, "<hello xmlns=\"%s\"><session-id>%u</session-id></hello>",
-	    NETCONF_BASE_NAMESPACE, id);
+    if ((msgid = xml_find_value(x, "message-id")) != NULL)
+	cprintf(cbret, "<hello xmlns=\"%s\" message-id=\"%s\"><session-id>%u</session-id></hello>",
+		NETCONF_BASE_NAMESPACE, msgid, id);
+    else
+	cprintf(cbret, "<hello xmlns=\"%s\"><session-id>%u</session-id></hello>",
+		NETCONF_BASE_NAMESPACE, id);
     retval = 0;
  done:
     return retval;
 }
+
 
 /*! An internal clicon message has arrived from a client. Receive and dispatch.
  * @param[in]   h    Clicon handle
@@ -1970,7 +2037,7 @@ from_client_msg(clicon_handle        h,
 	goto reply;
     }
     else if (strcmp(namespace, NETCONF_BASE_NAMESPACE) != 0){
-	cbuf *cbmsg;
+	cbuf *cbmsg = NULL;
 	if ((cbmsg = cbuf_new()) == NULL){
 	    clicon_err(OE_UNIX, errno, "cbuf_new");
 	    goto done;
@@ -2127,7 +2194,7 @@ from_client(int   s,
     struct clicon_msg   *msg = NULL;
     struct client_entry *ce = (struct client_entry *)arg;
     clicon_handle        h = ce->ce_handle;
-    int                  eof;
+    int                  eof = 0;
 
     clicon_debug(1, "%s", __FUNCTION__);
     // assert(s == ce->ce_s);
@@ -2220,6 +2287,9 @@ backend_rpc_init(clicon_handle h)
 	goto done;
     if (rpc_callback_register(h, from_client_restart_plugin, NULL,
 			      CLIXON_LIB_NS, "restart-plugin") < 0)
+	goto done;
+    if (rpc_callback_register(h, from_client_process_control, NULL,
+			      CLIXON_LIB_NS, "process-control") < 0)
 	goto done;
     retval =0;
  done:

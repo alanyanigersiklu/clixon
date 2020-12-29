@@ -418,6 +418,10 @@ api_return_err(clicon_handle h,
 	    goto done;
 	}
     }
+#if 1
+    if (clicon_debug_get())
+	clicon_log_xml(LOG_DEBUG, xerr, "%s Send error:", __FUNCTION__);
+#endif
     if (xml_name_set(xerr, "error") < 0)
 	goto done;
     tagstr = xml_body(xtag);
@@ -427,12 +431,11 @@ api_return_err(clicon_handle h,
 	if ((code = restconf_err2code(tagstr)) < 0)
 	    code = 500; /* internal server error */
     }  
-    if (restconf_reply_header(req, "Content_Type", "%s", restconf_media_int2str(media)) < 0)
+    if (restconf_reply_header(req, "Content-Type", "%s", restconf_media_int2str(media)) < 0) // XXX
 	goto done;
     switch (media){
     case YANG_DATA_XML:
     case YANG_COLLECTION_XML:
-	clicon_debug(1, "%s code:%d err:%s", __FUNCTION__, code, cbuf_get(cb));
 	if (pretty){
 	    cprintf(cb, "    <errors xmlns=\"urn:ietf:params:xml:ns:yang:ietf-restconf\">\n");
 	    if (clicon_xml2cbuf(cb, xerr, 2, pretty, -1) < 0)
@@ -448,7 +451,6 @@ api_return_err(clicon_handle h,
 	break;
     case YANG_DATA_JSON:
     case YANG_COLLECTION_JSON:
-	clicon_debug(1, "%s code:%d err:%s", __FUNCTION__, code, cbuf_get(cb));
 	if (pretty){
 	    cprintf(cb, "{\n\"ietf-restconf:errors\" : ");
 	    if (xml2json_cbuf(cb, xerr, pretty) < 0)

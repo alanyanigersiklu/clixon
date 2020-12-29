@@ -55,13 +55,13 @@ EOF
 	fi
 	new "start backend -s init -f $cfg"
 	start_backend -s init -f $cfg
+
+	new "wait backend"
+	wait_backend
     fi
 
-    new "waiting"
-    wait_backend
-
     new "$clixon_cli -1f $cfg show version"
-    expectfn "$clixon_cli -1f $cfg show version" 0 "$version."
+    expectpart "$($clixon_cli -1f $cfg show version)" 0 "$version."
  
     new "hello session-id 2"
     expecteof "$clixon_util_socket -a $family -s $sock -D $DBG" 0 "<hello $DEFAULTNS/>" "<hello $DEFAULTNS><session-id>3</session-id></hello>"

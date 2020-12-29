@@ -6,11 +6,10 @@
 #
 # Create working dir as variable "dir"
 # The functions are somewhat wildgrown, a little too many:
-# - expectfn
 # - expectpart
 # - expecteof
-# - expecteofeq
 # - expecteofx
+# - expecteofeq
 # - expecteof_file
 # - expectwait
 # - expectmatch
@@ -41,23 +40,6 @@ if [ -f ./config.sh ]; then
     fi
 fi
 
-# Sanity nginx running on systemd platforms
-if systemctl > /dev/null 2>&1 ; then
-    nginxactive=$(systemctl show nginx |grep ActiveState=active)
-    if [ "${WITH_RESTCONF}" = "fcgi" ]; then
-	if [ -z "$nginxactive" ]; then
-	    echo -e "\e[31m\nwith-restconf=fcgi set but nginx not running, start with systemctl start nginx"
-	    echo -e "\e[0m"
-	    exit -1
-	fi
-    else
-	if [ -n "$nginxactive" ]; then
-	    echo -e "\e[31m\nwith-restconf=fcgi not set but nginx running, stop with systemctl stop nginx"
-	    echo -e "\e[0m"
-	    exit -1
-	fi
-    fi
-fi # systemctl
 
 # Test number from start
 : ${testnr:=0}
@@ -99,7 +81,9 @@ testname=
 : ${RCLOG:=}
 
 # Default netconf namespace statement, typically as placed on top-level <rpc xmlns=""
-DEFAULTNS='xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"'
+DEFAULTONLY='xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"'
+# Default netconf namespace + message-id
+DEFAULTNS="$DEFAULTONLY message-id=\"42\""
 
 # Options passed to curl calls
 # -s : silent
@@ -110,10 +94,16 @@ DEFAULTNS='xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"'
 
 # Wait after daemons (backend/restconf) start. See mem.sh for valgrind
 if [ "$(uname -m)" = "armv7l" ]; then
-    : ${RCWAIT:=8}
+    : ${DEMWAIT:=8}
 else
-    : ${RCWAIT:=2}
+    : ${DEMWAIT:=2}
 fi
+
+# Multiplication factor to sleep less than whole seconds
+DEMSLEEP=.2
+
+# DEMWAIT is expressed in seconds, but really * DEMSLEEP
+let DEMLOOP=5*DEMWAIT
 
 # RESTCONF protocol, eg http or https
 : ${RCPROTO:=http}
@@ -171,9 +161,45 @@ if [ -f ./site.sh ]; then
     done
 fi
 
+# Check sanity between --with-restconf setting and if nginx is started by systemd or not
+# This check is optional because some installs, such as vagrant make a non-systemd/direct
+# start
+: ${NGINXCHECK:=false}
+# Sanity nginx running on systemd platforms
+if $NGINXCHECK; then
+    if systemctl > /dev/null 2>&1 ; then
+	# even if systemd exists, nginx may be started in other ways
+	nginxactive=$(systemctl show nginx |grep ActiveState=active)
+	if [ "${WITH_RESTCONF}" = "fcgi" ]; then
+	    if [ -z "$nginxactive"  -a ! -f /var/run/nginx.pid ]; then
+		echo -e "\e[31m\nwith-restconf=fcgi set but nginx not running, start with:"
+		echo "systemctl start nginx"
+		echo -e "\e[0m"
+		exit -1
+	    fi
+	else
+	    if [ -n "$nginxactive" -o -f /var/run/nginx.pid ]; then
+		echo -e "\e[31m\nwith-restconf=fcgi not set but nginx running, stop with:"
+		echo "systemctl stop nginx"
+		echo -e "\e[0m"
+		exit -1
+	    fi
+	fi
+    fi # systemctl
+fi
+
 dir=/var/tmp/$0
 if [ ! -d $dir ]; then
     mkdir $dir
+fi
+
+# Default restconf configuration: http IPv4 
+# Can be placed in clixon-config
+# Note that https clause assumes there exists certs and keys in /etc/ssl,...
+if [ $RCPROTO = http ]; then
+    RESTCONFIG="<restconf><enable>true</enable><auth-type>password</auth-type><socket><namespace>default</namespace><address>0.0.0.0</address><port>80</port><ssl>false</ssl></socket></restconf>"
+else
+    RESTCONFIG="<restconf><enable>true</enable><auth-type>password</auth-type><server-cert-path>/etc/ssl/certs/clixon-server-crt.pem</server-cert-path><server-key-path>/etc/ssl/private/clixon-server-key.pem</server-key-path><server-ca-cert-path>/etc/ssl/certs/clixon-ca-crt.pem</server-ca-cert-path><socket><namespace>default</namespace><address>0.0.0.0</address><port>443</port><ssl>true</ssl></socket></restconf>"
 fi
 
 # Some tests may set owner of testdir to something strange and quit, need
@@ -205,6 +231,7 @@ err(){
       echo "Received: $2"
   fi
   echo -e "\e[0m"
+  echo "Diff between Expected and Received:"
   echo "$ret"| od -t c > $dir/clixon-ret
   echo "$expect"| od -t c > $dir/clixon-expect
   diff $dir/clixon-expect $dir/clixon-ret 
@@ -263,12 +290,14 @@ wait_backend(){
     reply=$(echo '<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101"><ping xmlns="http://clicon.org/lib"/></rpc>]]>]]>' | $clixon_netconf -qef $cfg 2> /dev/null) 
     let i=0;
     while [[ $reply != "<rpc-reply"* ]]; do
-	sleep 1
+#	echo "sleep $DEMSLEEP"
+	sleep $DEMSLEEP
 	reply=$(echo '<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="101" xmlns="http://clicon.org/lib"><ping/></rpc>]]>]]>' | clixon_netconf -qef $cfg 2> /dev/null)
+#	echo "reply:$reply"
 	let i++;
 #	echo "wait_backend  $i"
-	if [ $i -ge $RCWAIT ]; then
-	    err "backend timeout $RCWAIT seconds"
+	if [ $i -ge $DEMLOOP ]; then
+	    err "backend timeout $DEMWAIT seconds"
 	fi
     done
 }
@@ -277,13 +306,8 @@ wait_backend(){
 # @see wait_restconf
 start_restconf(){
     # Start in background 
-    if [ $RCPROTO = https -a "${WITH_RESTCONF}" = "evhtp" ]; then
-	EXTRA="-s" # server certs ONLY evhtp
-    else
-	EXTRA=
-    fi
-    echo "sudo -u $wwwstartuser -s $clixon_restconf $RCLOG -D $DBG $EXTRA $*"
-    sudo -u $wwwstartuser -s $clixon_restconf $RCLOG -D $DBG $EXTRA $* &
+    echo "sudo -u $wwwstartuser -s $clixon_restconf $RCLOG -D $DBG $*"
+    sudo -u $wwwstartuser -s $clixon_restconf $RCLOG -D $DBG $* &
     if [ $? -ne 0 ]; then
 	err
     fi
@@ -316,13 +340,13 @@ wait_restconf(){
 #    echo "hdr:\"$hdr\""
     let i=0;
     while [[ $hdr != *"200 OK"* ]]; do
-	sleep 1
+	sleep $DEMSLEEP
 	hdr=$(curl $CURLOPTS $* $RCPROTO://localhost/restconf)
 #	echo "hdr:\"$hdr\""
 	let i++;
 #	echo "wait_restconf $i"
-	if [ $i -ge $RCWAIT ]; then
-	    err "restconf timeout $RCWAIT seconds"
+	if [ $i -ge $DEMLOOP ]; then
+	    err "restconf timeout $DEMWAIT seconds"
 	fi
     done
     if [ $valgrindtest -eq 3 ]; then 
@@ -344,63 +368,6 @@ new(){
     testi=`expr $testi + 1`
     testname=$1
     >&2 echo "Test $testi($testnr) [$1]"
-}
-
-# clixon command tester.
-# Arguments:
-# - command,
-# - expected command return value (0 if OK)
-# - expected* stdout outcome, (can be many)
-# Example: expectfn "$clixon_cli -1 -f $cfg show conf cli" 0 "line1" "line2" 
-# XXX: for some reason some curl commands dont work here, eg
-#   curl -H 'Accept: application/xrd+xml'
-# NOTE: Please us expectpart instead!!
-expectfn(){
-    cmd=$1
-    retval=$2
-    expect="$3"
-
-    if [ $# = 4 ]; then
-	expect2=$4
-    else
-	expect2=
-    fi
-    ret=$($cmd)
-    r=$?
-#    echo "cmd:\"$cmd\""
-#    echo "retval:\"$retval\""
-#    echo "expect:\"$expect\""
-#    echo "ret:\"$ret\""
-#    echo "r:\"$r\""
-    if [ $r != $retval ]; then
-	echo -e "\e[31m\nError ($r != $retval) in Test$testnr [$testname]:"
-	echo -e "\e[0m:"
-	exit -1
-    fi
-    #  if [ $ret -ne $retval ]; then
-    #      echo -e "\e[31m\nError in Test$testnr [$testname]:"
-    #      echo -e "\e[0m:"
-    #      exit -1
-    #  fi
-    # Match if both are empty string (special case)
-    if [ -z "$ret" -a -z "$expect" ]; then
-	return
-    fi
-    if [ -z "$ret" -a "$expect" = "^$" ]; then
-	return
-    fi
-    # Loop over all variable args expect strings
-    let i=0;
-    for exp in "$@"; do
-	if [ $i -gt 1 ]; then
-	    match=`echo $ret | grep --null -Eo "$exp"`
-	    if [ -z "$match" ]; then
-		err "$exp" "$ret"
-	    fi
-	fi
-	let i++;
-	
-    done
 }
 
 # Evaluate and return

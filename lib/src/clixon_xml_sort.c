@@ -1135,6 +1135,7 @@ xml_sort_verify(cxobj *x0,
  * @retval     0       OK
  * @retval    -1       Error
  * @note only handles first match
+ * @see xml_cmp regarding what "match" means in this context (model-match not value-match)
  */
 int
 match_base_child(cxobj      *x0, 
@@ -1343,6 +1344,7 @@ xml_find_index_yang(cxobj       *xp,
     cg_var    *ycv = NULL;
     int        i;
     char      *name;
+    char      *encstr;
     int        revert = 0;
     char      *indexvar = NULL;
 
@@ -1377,7 +1379,10 @@ xml_find_index_yang(cxobj       *xp,
 		revert++;
 		break;
 	    }
-	    cprintf(cb, "<%s>%s</%s>", kname, cv_string_get(cvi), kname);
+	    if (xml_chardata_encode(&encstr, "%s", cv_string_get(cvi)) < 0)
+		goto done;
+	    cprintf(cb, "<%s>%s</%s>", kname, encstr, kname);
+	    free(encstr);
 	    i++;
 	}
 	if (revert)
@@ -1390,7 +1395,10 @@ xml_find_index_yang(cxobj       *xp,
 	    goto done;
 	}
 	cvi = cvec_i(cvk, 0);
-	cprintf(cb, "<%s>%s</%s>", name, cv_string_get(cvi), name);
+	if (xml_chardata_encode(&encstr, "%s", cv_string_get(cvi)) < 0)
+	    goto done;
+	cprintf(cb, "<%s>%s</%s>", name, encstr, name);
+	free(encstr);
 	break;
     default:
 	cprintf(cb, "<%s/>", name);
@@ -1407,7 +1415,10 @@ xml_find_index_yang(cxobj       *xp,
 	    yang_flag_get(yi, YANG_FLAG_INDEX) == 0)
 	    goto revert;
 	cbuf_reset(cb);
-	cprintf(cb, "<%s><%s>%s</%s></%s>", name, iname, cv_string_get(cvi), iname, name);	
+	if (xml_chardata_encode(&encstr, "%s", cv_string_get(cvi)) < 0)
+	    goto done;
+	cprintf(cb, "<%s><%s>%s</%s></%s>", name, iname, encstr, iname, name);
+	free(encstr);
 	indexvar = iname;
     }
 #else

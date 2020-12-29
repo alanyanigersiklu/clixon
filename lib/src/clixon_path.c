@@ -280,11 +280,11 @@ xml_yang_root(cxobj  *x,
     return retval;
 }
 
-/*! Construct an xml key format from yang statement using wildcards for keys
+/*! Construct an api-path key format from yang statement using wildcards for keys
  * Recursively construct it to the top.
  * Example: 
  *   yang:  container a -> list b -> key c -> leaf d
- *   xpath: /modname:a/b/%s/d
+ *   path: /modname:a/b/%s/d
  * @param[in]  ys      Yang statement
  * @param[in]  inclkey If set include key leaf (eg last leaf d in ex)
  * @param[out] cb      api_path_fmt,
@@ -389,9 +389,9 @@ yang2api_path_fmt_1(yang_stmt *ys,
  * "api-path" is "URI-encoded path expression" definition in RFC8040 3.5.3
  */ 
 int
-yang2api_path_fmt(yang_stmt *ys, 
-		  int        inclkey,
-		  char     **api_path_fmt)
+yang2api_path_fmt(yang_stmt   *ys, 
+		  int          inclkey,
+		  char       **api_path_fmt)
 {
     int   retval = -1;
     cbuf *cb = NULL;
@@ -424,6 +424,10 @@ yang2api_path_fmt(yang_stmt *ys,
  * @param[in]  api_path_fmt  XML key format, eg /aaa/%s/name
  * @param[in]  cvv           cligen variable vector, one for every wildchar in api_path_fmt
  * @param[out] api_path      api_path, eg /aaa/17. Free after use
+ * @param[out] cvvi          1..cvv-len. Index into cvv of last cvv entry used, For example, 
+ *                           if same as len of cvv, all were used, if < some entries were not
+ * @retval     0             OK
+ * @retval     -1            Error
  * @note first and last elements of cvv are not used,..
  * @see api_path_fmt2xpath
  * @example
@@ -436,24 +440,25 @@ yang2api_path_fmt(yang_stmt *ys,
  *  api_path:     /interfaces/interface=e0/name
  * @example
  *  api_path_fmt: /subif-entry=%s,%s/subid
- *  cvv:          foo
- *  api_path:     /subif-entry=foo/subid
+ *  cvv:          foo, bar
+ *  api_path:     /subif-entry=foo,bar/subid
  *
  * "api-path" is "URI-encoded path expression" definition in RFC8040 3.5.3
  */
 int
-api_path_fmt2api_path(char  *api_path_fmt, 
-		      cvec  *cvv, 
-		      char **api_path)
+api_path_fmt2api_path(const char *api_path_fmt, 
+		      cvec       *cvv, 
+		      char      **api_path,
+		      int        *cvv_i)
 {
-    int   retval = -1;
-    char  c;
-    int   esc=0;
-    cbuf *cb = NULL;
-    int   i;
-    int   j;
-    char *str;
-    char *strenc=NULL;
+    int     retval = -1;
+    char    c;
+    int     esc=0;
+    cbuf   *cb = NULL;
+    int     i;
+    int     j;
+    char   *str;
+    char   *strenc=NULL;
     cg_var *cv;
     
     if ((cb = cbuf_new()) == NULL){
@@ -496,6 +501,8 @@ api_path_fmt2api_path(char  *api_path_fmt,
 	clicon_err(OE_UNIX, errno, "strdup");
 	goto done;
     }
+    if (cvv_i) /* Last entry in cvv used */
+	*cvv_i = j; 
     retval = 0;
  done:
     if (cb)
@@ -919,7 +926,6 @@ api_path2xml_vec(char      **vec,
 	clicon_err(OE_UNIX, errno, "cbuf_new");
 	goto done;
     }
-
     /* restval is RFC 3896 encoded */
     if ((restval_enc = index(nodeid, '=')) != NULL){
 	*restval_enc = '\0';
@@ -933,13 +939,15 @@ api_path2xml_vec(char      **vec,
     if (yang_keyword_get(y0) == Y_SPEC){ /* top-node */
 	if (prefix == NULL){
 	    cprintf(cberr, "api-path element '%s', expected prefix:name", nodeid);
-	    if (netconf_invalid_value_xml(xerr, "application", cbuf_get(cberr)) < 0)
+	    if (xerr &&
+		netconf_invalid_value_xml(xerr, "application", cbuf_get(cberr)) < 0)
 		goto done;
 	    goto fail;
 	}
 	if ((ymod = yang_find_module_by_name(y0, prefix)) == NULL){
 	    cprintf(cberr, "No such yang module prefix");
-	    if (netconf_unknown_element_xml(xerr, "application", prefix, cbuf_get(cberr)) < 0)
+	    if (xerr &&
+		netconf_unknown_element_xml(xerr, "application", prefix, cbuf_get(cberr)) < 0)
 		goto done;
 	    goto fail;
 	}
@@ -950,14 +958,16 @@ api_path2xml_vec(char      **vec,
 	yang_find_schemanode(y0, name):
 	yang_find_datanode(y0, name);
     if (y == NULL){
-	if (netconf_unknown_element_xml(xerr, "application", name, "Unknown element") < 0)
+	if (xerr &&
+	    netconf_unknown_element_xml(xerr, "application", name, "Unknown element") < 0)
 	    goto done;
 	goto fail;
     }
     if (prefix && namespace == NULL){
 	if ((ymod = yang_find_module_by_name(ys_spec(y0), prefix)) == NULL){
 	    cprintf(cberr, "api-path element prefix: '%s', no such yang module", prefix);
-	    if (netconf_invalid_value_xml(xerr, "application", cbuf_get(cberr)) < 0)
+	    if (xerr &&
+		netconf_invalid_value_xml(xerr, "application", cbuf_get(cberr)) < 0)
 		goto done;
 	    goto fail;
 	}
@@ -965,14 +975,17 @@ api_path2xml_vec(char      **vec,
     }
     switch (yang_keyword_get(y)){
     case Y_LEAF_LIST:
-	if (0 && restval==NULL){
+#if 0
+	if (restval==NULL){
 	    clicon_err(OE_XML, 0, "malformed key, expected '=restval'");
 	    goto done;
 	}
+#endif
+	if (x0 == NULL)
+	    break;
 	if ((x = xml_new(yang_argument_get(y), x0, CX_ELMNT)) == NULL)
 	    goto done;
 	xml_spec_set(x, y);
-
 	if ((xb = xml_new("body", x, CX_BODY)) == NULL)
 	    goto done; 
 	if (restval && xml_value_set(xb, restval) < 0)
@@ -983,7 +996,8 @@ api_path2xml_vec(char      **vec,
 	if (restval==NULL){
 	    if (strict){
 		cprintf(cberr, "malformed key =%s, expected '=restval'", nodeid);
-		if (netconf_malformed_message_xml(xerr, cbuf_get(cberr)) < 0)
+		if (xerr &&
+		    netconf_malformed_message_xml(xerr, cbuf_get(cberr)) < 0)
 		    goto done;
 	        goto fail;
 	    }
@@ -996,16 +1010,19 @@ api_path2xml_vec(char      **vec,
 		goto done;
 	    if ((nvalvec != cvec_len(cvk)) && strict){ 	    
 		cprintf(cberr, "List key %s length mismatch", name);
-		if (netconf_malformed_message_xml(xerr, cbuf_get(cberr)) < 0)
+		if (xerr &&
+		    netconf_malformed_message_xml(xerr, cbuf_get(cberr)) < 0)
 		    goto done;
 		goto fail;
 	    }
 	}
 	cvi = NULL;
 	/* create list object */
-	if ((x = xml_new(name, x0, CX_ELMNT)) == NULL)
-	    goto done;
-	xml_spec_set(x, y);
+	if (x0){
+	    if ((x = xml_new(name, x0, CX_ELMNT)) == NULL)
+		goto done;
+	    xml_spec_set(x, y);
+	}
 	vi = 0;
 	/* Create keys */
 	while ((cvi = cvec_each(cvk, cvi)) != NULL){
@@ -1013,24 +1030,27 @@ api_path2xml_vec(char      **vec,
 	    if ((ykey = yang_find(y, Y_LEAF, keyname)) == NULL){
 		cprintf(cberr, "List statement \"%s\" has no key leaf \"%s\"",
 			yang_argument_get(y), keyname);
-		if (netconf_invalid_value_xml(xerr, "application", cbuf_get(cberr)) < 0)
+		if (xerr &&
+		    netconf_invalid_value_xml(xerr, "application", cbuf_get(cberr)) < 0)
 		    goto done;
 		goto fail;
 	    }
-	    if ((xn = xml_new(keyname, x, CX_ELMNT)) == NULL)
-		goto done; 
-	    xml_spec_set(xn, ykey);
-
-	    if ((xb = xml_new("body", xn, CX_BODY)) == NULL)
-		goto done;
-	    if (vi++ < nvalvec){
-		if (xml_value_set(xb, valvec[vi-1]) < 0)
+	    if (x != NULL){
+		if ((xn = xml_new(keyname, x, CX_ELMNT)) == NULL)
+		    goto done; 
+		xml_spec_set(xn, ykey);
+		if ((xb = xml_new("body", xn, CX_BODY)) == NULL)
 		    goto done;
+		if (vi++ < nvalvec){
+		    if (xml_value_set(xb, valvec[vi-1]) < 0)
+			goto done;
+		}
 	    }
 	}
 	break;
     default: /* eg Y_CONTAINER, Y_LEAF */
-	if ((x = xml_find_type(x0, NULL, name, CX_ELMNT)) == NULL){ /* eg key of list */
+	if (x0 &&
+	    (x = xml_find_type(x0, NULL, name, CX_ELMNT)) == NULL){ /* eg key of list */
 	    if ((x = xml_new(name, x0, CX_ELMNT)) == NULL)
 		goto done;
 	    xml_spec_set(x, y);
@@ -1087,6 +1107,10 @@ api_path2xml_vec(char      **vec,
  *                       </subif-entry></config>
  *   xbotp:    <subid/>
  *   ybotp:    Y_LEAF subid
+ * @code
+ *   if ((ret = api_path2xml(api_path, yspec, xtop, YC_DATANODE, 1, &xbot, &y, &xerr)) < 0)
+ *     err;
+ * @endcode
  * @note "api-path" is "URI-encoded path expression" definition in RFC8040 3.5.3
  * @see api_path2xpath   For api-path to xpath translation (maybe could be combined?)
  * @note "Collections" should use strict = 0
@@ -1108,17 +1132,13 @@ api_path2xml(char       *api_path,
     cbuf  *cberr = NULL;
 
     clicon_debug(2, "%s api_path:%s", __FUNCTION__, api_path);
-    if (xtop == NULL){
-	clicon_err(OE_XML, EINVAL, "xtop is NULL");
-	goto done;
-    }
     if ((cberr = cbuf_new()) == NULL){
 	clicon_err(OE_UNIX, errno, "cbuf_new");
 	goto done;
     }
     if (*api_path != '/'){
 	cprintf(cberr, "Invalid api-path: %s (must start with '/')", api_path);
-	if (netconf_invalid_value_xml(xerr, "application", cbuf_get(cberr)) < 0)
+	if (xerr && netconf_invalid_value_xml(xerr, "application", cbuf_get(cberr)) < 0)
 	    goto done;
 	goto fail;
     }
@@ -1129,7 +1149,7 @@ api_path2xml(char       *api_path,
 	nvec--;
     if (nvec < 1){
 	cprintf(cberr, "Malformed api-path: %s: too short)", api_path);
-	if (netconf_invalid_value_xml(xerr, "application", cbuf_get(cberr)) < 0)
+	if (xerr && netconf_invalid_value_xml(xerr, "application", cbuf_get(cberr)) < 0)
 	    goto done;
 	goto fail;
     }
@@ -1138,9 +1158,12 @@ api_path2xml(char       *api_path,
 				   xtop, yspec, nodeclass, strict, 
 				   xbotp, ybotp, xerr)) < 1)
 	goto done;
-    xml_yang_root(*xbotp, &xroot);
-    if (xmlns_assign(xroot) < 0)
-	goto done;
+    /* Fix namespace */
+    if (xbotp){
+	xml_yang_root(*xbotp, &xroot);
+	if (xmlns_assign(xroot) < 0)
+	    goto done;
+    }
     // ok:
     retval = 1;
  done:

@@ -43,6 +43,7 @@ cat <<EOF > $cfg
   <CLICON_RESTCONF_PRETTY>false</CLICON_RESTCONF_PRETTY>
   <CLICON_XMLDB_DIR>/usr/local/var/$APPNAME</CLICON_XMLDB_DIR>
   <CLICON_MODULE_LIBRARY_RFC7895>false</CLICON_MODULE_LIBRARY_RFC7895>
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -176,28 +177,28 @@ new "netconfig edit main module"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><edit-config><target><candidate/></target><config><main xmlns=\"urn:example:clixon\"><x>foo</x><ext>foo</ext></main></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
 
 new "cli edit main"
-expectfn "$clixon_cli -1f $cfg set main x bar" 0 ""
+expectpart "$($clixon_cli -1f $cfg set main x bar)" 0 ""
 
 new "cli edit main ext"
-expectfn "$clixon_cli -1f $cfg set main ext bar" 0 ""
+expectpart "$($clixon_cli -1f $cfg set main ext bar)" 0 ""
 
 new "netconfig edit sub1"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><edit-config><target><candidate/></target><config><sub1 xmlns=\"urn:example:clixon\"><x>foo</x><ext1>foo</ext1></sub1></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
 
 new "cli edit sub1"
-expectfn "$clixon_cli -1f $cfg set sub1 x bar" 0 ""
+expectpart "$($clixon_cli -1f $cfg set sub1 x bar)" 0 ""
 
 new "cli edit sub1 ext"
-expectfn "$clixon_cli -1f $cfg set sub1 ext1 bar" 0 ""
+expectpart "$($clixon_cli -1f $cfg set sub1 ext1 bar)" 0 ""
 
 new "netconfig edit sub2 module"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><edit-config><target><candidate/></target><config><sub2 xmlns=\"urn:example:clixon\"><x>foo</x><ext2>foo</ext2></sub2></config></edit-config></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
 
 new "cli edit sub2"
-expectfn "$clixon_cli -1f $cfg set sub2 x fum" 0 ""
+expectpart "$($clixon_cli -1f $cfg set sub2 x fum)" 0 ""
 
 new "cli edit sub2 ext"
-expectfn "$clixon_cli -1f $cfg set sub2 ext2 fum" 0 ""
+expectpart "$($clixon_cli -1f $cfg set sub2 ext2 fum)" 0 ""
 
 new "netconf submodule validate"
 expecteof "$clixon_netconf -qf $cfg" 0 "<rpc $DEFAULTNS><validate><source><candidate/></source></validate></rpc>]]>]]>" "^<rpc-reply $DEFAULTNS><ok/></rpc-reply>]]>]]>$"
@@ -216,7 +217,7 @@ new "restconf edit sub2"
 expectpart "$(curl $CURLOPTS -X POST -H "Content-Type: application/yang-data+json" $RCPROTO://localhost/restconf/data -d '{"main:sub2":{"x":"foo","ext2":"foo"}}')" 0 'HTTP/1.1 201 Created'
 
 new "restconf check main/sub1/sub2 contents"
-expectpart "$(curl $CURLOPTS -X GET $RCPROTO://localhost/restconf/data?content=config)" 0 'HTTP/1.1 200 OK' '{"data":{"main:main":{"ext":"foo","x":"foo"},"main:sub1":{"ext1":"foo","x":"foo"},"main:sub2":{"ext2":"foo","x":"foo"}}}'
+expectpart "$(curl $CURLOPTS -X GET $RCPROTO://localhost/restconf/data?content=config)" 0 'HTTP/1.1 200 OK' '{"data":{"main:main":{"ext":"foo","x":"foo"},"main:sub1":{"ext1":"foo","x":"foo"},"main:sub2":{"ext2":"foo","x":"foo"}'
 
 if [ $RC -ne 0 ]; then
     new "Kill restconf daemon"

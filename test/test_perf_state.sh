@@ -13,13 +13,14 @@ fin=$dir/fin
 : ${format:=xml}
 
 # Number of list/leaf-list entries in file (cant be less than 2)
-: ${perfnr:=1000}
+: ${perfnr:=20000}
 
 # Number of requests made get/put
 : ${perfreq:=10}
 
 # time function (this is a mess to get right on freebsd/linux)
 : ${TIMEFN:=time -p} # portability: 2>&1 | awk '/real/ {print $2}'
+if ! $TIMEFN true; then err "A working time function" "'$TIMEFN' does not work"; fi
 
 APPNAME=example
 
@@ -46,6 +47,7 @@ cat <<EOF > $cfg
   <CLICON_CLISPEC_DIR>/usr/local/lib/example/clispec</CLICON_CLISPEC_DIR>
   <CLICON_CLI_LINESCROLLING>0</CLICON_CLI_LINESCROLLING>
   <CLICON_FEATURE>ietf-netconf:startup</CLICON_FEATURE>
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -183,6 +185,9 @@ $TIMEFN curl $CURLOPTS -X GET $RCPROTO://localhost/restconf/data/example:interfa
 
 new "cli get large config"
 $TIMEFN $clixon_cli -1f $cfg show state xml interfaces a foo b 2>&1 | awk '/real/ {print $2}'
+
+# mem test needs sleep here
+sleep $DEMSLEEP
 
 if [ $RC -ne 0 ]; then
     new "Kill restconf daemon"

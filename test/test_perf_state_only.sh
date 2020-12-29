@@ -13,13 +13,14 @@ s="$_" ; . ./lib.sh || if [ "$s" = $0 ]; then exit 0; else return 0; fi
 : ${format:=xml}
 
 # Number of list/leaf-list entries in file (cant be less than 2)
-: ${perfnr:=1000}
+: ${perfnr:=20000}
 
 # Number of requests made get/put
 : ${perfreq:=10}
 
 # time function (this is a mess to get right on freebsd/linux)
 : ${TIMEFN:=time -p} # portability: 2>&1 | awk '/real/ {print $2}'
+if ! $TIMEFN true; then err "A working time function" "'$TIMEFN' does not work"; fi
 
 APPNAME=example
 
@@ -45,6 +46,7 @@ cat <<EOF > $cfg
   <CLICON_CLI_DIR>/usr/local/lib/example/cli</CLICON_CLI_DIR>
   <CLICON_CLISPEC_DIR>/usr/local/lib/example/clispec</CLICON_CLISPEC_DIR>
   <CLICON_FEATURE>ietf-netconf:startup</CLICON_FEATURE>
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -155,7 +157,7 @@ done } 2>&1 | awk '/real/ {print $2}'
 if false; then
 # CLI get
 new "cli get test single req"
-expectfn "$clixon_cli -1 -1f $cfg -l o show state xml interfaces a foo b interface e1" 0 '^<interface>
+expectpart "$($clixon_cli -1 -1f $cfg -l o show state xml interfaces a foo b interface e1)" 0 '^<interface>
    <name>e1</name>
    <type>eth</type>
    <status>up</status>

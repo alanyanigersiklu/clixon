@@ -173,7 +173,7 @@ load_extraxml(clicon_handle h,
 
     if (filename == NULL)
 	return 1;
-    if ((fp = fopen(filename, "r")) < 0){
+    if ((fp = fopen(filename, "r")) == NULL){
 	clicon_err(OE_UNIX, errno, "open(%s)", filename);
 	goto done;
     }
@@ -244,7 +244,9 @@ startup_extraxml(clicon_handle        h,
      */
     if (xmldb_get(h, tmp_db, NULL, NULL, &xt0) < 0)
 	goto done;
-    if (xmldb_empty_get(h, tmp_db))
+    if ((ret = xmldb_empty_get(h, tmp_db)) < 0)
+	goto done;
+    if (ret == 1)
 	goto ok;
     xt = NULL;
     /* Validate the tmp db and return possibly upgraded xml in xt

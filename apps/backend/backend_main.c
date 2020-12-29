@@ -126,7 +126,10 @@ backend_terminate(clicon_handle h)
     /* Delete all backend plugin RPC callbacks */
     rpc_callback_delete_all(h);
     /* Delete all backend plugin upgrade callbacks */
-    upgrade_callback_delete_all(h); 
+    upgrade_callback_delete_all(h);
+    /* Delete all process-control entries */
+    clixon_process_delete_all(h); 
+
     xpath_optimize_exit();
 
     if (pidfile)
@@ -173,6 +176,50 @@ backend_server_socket(clicon_handle h)
 	return -1;
     }
     return ss;
+}
+
+/*! Enable process-control of restconf daemon, ie start/stop restconf 
+ * @param[in]  h  Clicon handle
+ * @note Could also look in clixon-restconf and start process if enable is true, but that needs to 
+ *       be in start callback using a pseudo plugin.
+ */
+static int
+backend_restconf_process_control(clicon_handle h)
+{
+    int    retval = -1;
+    char **argv = NULL;
+    int    i;
+    int    nr;
+    char   dbgstr[8];
+    char   wwwstr[64];
+
+    nr = 4;
+    if (clicon_debug_get() != 0)
+	nr += 2;
+    if ((argv = calloc(nr, sizeof(char *))) == NULL){
+	clicon_err(OE_UNIX, errno, "calloc");
+	goto done;
+    }
+    i = 0;
+    snprintf(wwwstr, sizeof(wwwstr)-1, "%s/clixon_restconf", clicon_option_str(h, "CLICON_WWWDIR"));
+    argv[i++] = wwwstr;
+    argv[i++] = "-f";
+    argv[i++] = clicon_option_str(h, "CLICON_CONFIGFILE");
+    if (clicon_debug_get() != 0){
+	argv[i++] = "-D";
+	snprintf(dbgstr, sizeof(dbgstr)-1, "%d", clicon_debug_get());
+	argv[i++] = dbgstr;
+    }
+    argv[i++] = NULL;
+    if (clixon_process_register(h, "restconf",
+				NULL /* XXX network namespace */,
+				argv, nr) < 0)
+	goto done;
+    if (argv != NULL)
+	free(argv);
+    retval = 0;
+ done:
+    return retval;
 }
 
 /*! Load external NACM file
@@ -529,6 +576,10 @@ main(int    argc,
 	    usage(h, argv[0]);
 	goto done;
     }
+    /* Add some specific options from autotools configure NOT config file */
+    clicon_option_str_set(h, "CLICON_WWWUSER", WWWUSER);
+    clicon_option_str_set(h, "CLICON_WWWDIR", WWWDIR);
+    
     /* External NACM file? */
     nacm_mode = clicon_option_str(h, "CLICON_NACM_MODE");
     if (nacm_mode && strcmp(nacm_mode, "external") == 0)
@@ -601,7 +652,7 @@ main(int    argc,
 	    extraxml_file = optarg;
 	    break;
 	case 'U': /* config user (for socket and drop privileges) */
-	    if (clicon_option_add(h, "CLICON_USER", optarg) < 0)
+	    if (clicon_username_set(h, optarg) < 0)
 		goto done;
 	    if (clicon_option_add(h, "CLICON_BACKEND_PRIVILEGES", "drop_permanent") < 0)
 		goto done;
@@ -737,6 +788,12 @@ main(int    argc,
 	clixon_plugins_load(h, CLIXON_PLUGIN_INIT, dir,
 			    clicon_option_str(h, "CLICON_BACKEND_REGEXP")) < 0)
 	goto done;
+
+    /* Enable process-control of restconf daemon, ie start/stop restconf */
+    if (clicon_option_bool(h, "CLICON_BACKEND_RESTCONF_PROCESS")){
+	if (backend_restconf_process_control(h) < 0)
+	    goto done;
+    }
 
     /* Load Yang modules
      * 1. Load a yang module as a specific absolute filename */
@@ -890,7 +947,8 @@ main(int    argc,
     /* Initiate the shared candidate. */
     if (xmldb_copy(h, "running", "candidate") < 0)
 	goto done;
-    xmldb_modified_set(h, "candidate", 0);
+    if (xmldb_modified_set(h, "candidate", 0) <0)
+	goto done;
     
     /* Set startup status */
     if (clicon_startup_status_set(h, status) < 0)

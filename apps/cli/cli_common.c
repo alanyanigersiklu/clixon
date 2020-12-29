@@ -251,9 +251,10 @@ cli_dbxml(clicon_handle       h,
     cxobj     *xerr = NULL;
     int        ret;
     cg_var    *cv;
+    int        cvv_i = 0;
 
     if (cvec_len(argv) != 1){
-	clicon_err(OE_PLUGIN, 0, "Requires one element to be xml key format string");
+	clicon_err(OE_PLUGIN, EINVAL, "Requires one element to be xml key format string");
 	goto done;
     }
     if ((yspec = clicon_dbspec_yang(h)) == NULL){
@@ -262,7 +263,10 @@ cli_dbxml(clicon_handle       h,
     }
     arg = cvec_i(argv, 0);
     api_path_fmt = cv_string_get(arg);
-    if (api_path_fmt2api_path(api_path_fmt, cvv, &api_path) < 0)
+    /* Transform template format string + cvv to actual api-path 
+     * cvv_i indicates if all cvv entries were used
+     */
+    if (api_path_fmt2api_path(api_path_fmt, cvv, &api_path, &cvv_i) < 0)
 	goto done;
     /* Create config top-of-tree */
     if ((xtop = xml_new("config", NULL, CX_ELMNT)) == NULL)
@@ -292,9 +296,17 @@ cli_dbxml(clicon_handle       h,
     /* Add body last in case of leaf */
     if (cvec_len(cvv) > 1 &&
 	(yang_keyword_get(y) == Y_LEAF)){
-	/* Add the body last */
-	if (dbxml_body(xbot, cvv) < 0)
-	    goto done;
+	/* Add the body last if there is remaining element that was not used in the
+	 * earlier api-path transformation.
+	 * This is to handle differences between:
+	 * DELETE <foo>bar</foo> and DELETE <foo/>
+	 * i.e., (1) deletion of a specific leaf entry vs (2) deletion of any entry
+	 * Discussion: one can claim (1) is "bad" usage but one could see cases where
+	 * you would want to delete a value if it has a specific value but not otherwise
+	 */
+	if (cvv_i != cvec_len(cvv))
+	    if (dbxml_body(xbot, cvv) < 0)
+		goto done;
 	/* Loop over namespace context and add them to this leaf node */
 	cv = NULL;
 	while ((cv = cvec_each(nsctx, cv)) != NULL){
@@ -438,7 +450,7 @@ cli_debug_cli(clicon_handle h,
 
     if ((cv = cvec_find(vars, "level")) == NULL){
 	if (cvec_len(argv) != 1){
-	    clicon_err(OE_PLUGIN, 0, "Requires either label var or single arg: 0|1");
+	    clicon_err(OE_PLUGIN, EINVAL, "Requires either label var or single arg: 0|1");
 	    goto done;
 	}
 	cv = cvec_i(argv, 0);
@@ -469,7 +481,7 @@ cli_debug_backend(clicon_handle h,
 
     if ((cv = cvec_find(vars, "level")) == NULL){
 	if (cvec_len(argv) != 1){
-	    clicon_err(OE_PLUGIN, 0, "Requires either label var or single arg: 0|1");
+	    clicon_err(OE_PLUGIN, EINVAL, "Requires either label var or single arg: 0|1");
 	    goto done;
 	}
 	cv = cvec_i(argv, 0);
@@ -499,7 +511,7 @@ cli_debug_restconf(clicon_handle h,
 
     if ((cv = cvec_find(vars, "level")) == NULL){
 	if (cvec_len(argv) != 1){
-	    clicon_err(OE_PLUGIN, 0, "Requires either label var or single arg: 0|1");
+	    clicon_err(OE_PLUGIN, EINVAL, "Requires either label var or single arg: 0|1");
 	    goto done;
 	}
 	cv = cvec_i(argv, 0);
@@ -524,7 +536,7 @@ cli_set_mode(clicon_handle h,
     char   *str = NULL;
 
     if (cvec_len(argv) != 1){
-	clicon_err(OE_PLUGIN, 0, "Requires one element to be cli mode");
+	clicon_err(OE_PLUGIN, EINVAL, "Requires one element to be cli mode");
 	goto done;
     }
     str = cv_string_get(cvec_i(argv, 0));
@@ -648,14 +660,14 @@ compare_xmls(cxobj *xc1,
     FILE  *f;
     char   filename1[MAXPATHLEN];
     char   filename2[MAXPATHLEN];
-    char   cmd[MAXPATHLEN];
     int    retval = -1;
     cxobj *xc;
+    cbuf  *cb = NULL;
 
     snprintf(filename1, sizeof(filename1), "/tmp/cliconXXXXXX");
     snprintf(filename2, sizeof(filename2), "/tmp/cliconXXXXXX");
     if ((fd = mkstemp(filename1)) < 0){
-	clicon_err(OE_UNDEF, errno, "tmpfile: %s", strerror (errno));
+	clicon_err(OE_UNDEF, errno, "tmpfile");
 	goto done;
     }
     if ((f = fdopen(fd, "w")) == NULL)
@@ -687,12 +699,19 @@ compare_xmls(cxobj *xc1,
     fclose(f);
     close(fd);
 
-    snprintf(cmd, sizeof(cmd), "/usr/bin/diff -dU 1 %s %s |  grep -v @@ | sed 1,2d", 		 filename1, filename2);
-    if (system(cmd) < 0)
+    if ((cb = cbuf_new()) == NULL){
+	clicon_err(OE_CFG, errno, "cbuf_new");
+	goto done;
+    }
+    cprintf(cb, "/usr/bin/diff -dU 1 %s %s |  grep -v @@ | sed 1,2d",
+	    filename1, filename2);
+    if (system(cbuf_get(cb)) < 0)
 	goto done;
 
     retval = 0;
   done:
+    if (cb)
+	cbuf_free(cb);
     unlink(filename1);
     unlink(filename2);
     return retval;
@@ -715,7 +734,7 @@ compare_dbs(clicon_handle h,
     int    astext;
 
     if (cvec_len(argv) > 1){
-	clicon_err(OE_PLUGIN, 0, "Requires 0 or 1 element. If given: astext flag 0|1");
+	clicon_err(OE_PLUGIN, EINVAL, "Requires 0 or 1 element. If given: astext flag 0|1");
 	goto done;
     }
     if (cvec_len(argv))
@@ -778,9 +797,9 @@ load_config_file(clicon_handle h,
 
     if (cvec_len(argv) != 2){
 	if (cvec_len(argv)==1)
-	    clicon_err(OE_PLUGIN, 0, "Got single argument:\"%s\". Expected \"<varname>,<op>\"", cv_string_get(cvec_i(argv,0)));
+	    clicon_err(OE_PLUGIN, EINVAL, "Got single argument:\"%s\". Expected \"<varname>,<op>\"", cv_string_get(cvec_i(argv,0)));
 	else
-	    clicon_err(OE_PLUGIN, 0, "Got %d arguments. Expected: <varname>,<op>", cvec_len(argv));
+	    clicon_err(OE_PLUGIN, EINVAL, "Got %d arguments. Expected: <varname>,<op>", cvec_len(argv));
 	goto done;
     }
     varstr = cv_string_get(cvec_i(argv, 0));
@@ -804,7 +823,7 @@ load_config_file(clicon_handle h,
 	goto done;
     }
     /* Open and parse local file into xml */
-    if ((fp = fopen(filename, "r")) < 0){
+    if ((fp = fopen(filename, "r")) == NULL){
 	clicon_err(OE_UNIX, errno, "open(%s)", filename);
 	goto done;
     }
@@ -867,10 +886,10 @@ save_config_file(clicon_handle h,
 
     if (cvec_len(argv) != 2){
 	if (cvec_len(argv)==1)
-	    clicon_err(OE_PLUGIN, 0, "Got single argument:\"%s\". Expected \"<dbname>,<varname>\"",
+	    clicon_err(OE_PLUGIN, EINVAL, "Got single argument:\"%s\". Expected \"<dbname>,<varname>\"",
 		       cv_string_get(cvec_i(argv,0)));
 	else
-	    clicon_err(OE_PLUGIN, 0, " Got %d arguments. Expected: <dbname>,<varname>",
+	    clicon_err(OE_PLUGIN, EINVAL, " Got %d arguments. Expected: <dbname>,<varname>",
 		       cvec_len(argv));
 
 	goto done;
@@ -931,7 +950,7 @@ delete_all(clicon_handle h,
     int              retval = -1;
 
     if (cvec_len(argv) != 1){
-	clicon_err(OE_PLUGIN, 0, "Requires one element: dbname");
+	clicon_err(OE_PLUGIN, EINVAL, "Requires one element: dbname");
 	goto done;
     }
     dbstr = cv_string_get(cvec_i(argv, 0));
@@ -1063,7 +1082,7 @@ cli_notify(clicon_handle h,
     enum format_enum format = FORMAT_TEXT;
 
     if (cvec_len(argv) != 2 && cvec_len(argv) != 3){
-	clicon_err(OE_PLUGIN, 0, "Requires arguments: <logstream> <status> [<format>]");
+	clicon_err(OE_PLUGIN, EINVAL, "Requires arguments: <logstream> <status> [<format>]");
 	goto done;
     }
     stream = cv_string_get(cvec_i(argv, 0));
@@ -1105,7 +1124,7 @@ cli_lock(clicon_handle h,
     int              retval = -1;
 
     if (cvec_len(argv) != 1){
-	clicon_err(OE_PLUGIN, 0, "Requires arguments: <db>");
+	clicon_err(OE_PLUGIN, EINVAL, "Requires arguments: <db>");
 	goto done;
     }
     db = cv_string_get(cvec_i(argv, 0));
@@ -1135,7 +1154,7 @@ cli_unlock(clicon_handle h,
     int              retval = -1;
 
     if (cvec_len(argv) != 1){
-	clicon_err(OE_PLUGIN, 0, "Requires arguments: <db>");
+	clicon_err(OE_PLUGIN, EINVAL, "Requires arguments: <db>");
 	goto done;
     }
     db = cv_string_get(cvec_i(argv, 0));
@@ -1196,7 +1215,7 @@ cli_copy_config(clicon_handle h,
     cvec        *nsc = NULL;
 
     if (cvec_len(argv) != 6){
-	clicon_err(OE_PLUGIN, 0, "Requires 6 elements: <db> <xpath> <namespace> <keyname> <from> <to>");
+	clicon_err(OE_PLUGIN, EINVAL, "Requires 6 elements: <db> <xpath> <namespace> <keyname> <from> <to>");
 	goto done;
     }
     /* First argv argument: Database */

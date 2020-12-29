@@ -80,7 +80,6 @@ set_signal(int     signo,
 #endif
 }
 
-
 /*! Block signal. 
  * @param[in] sig   Signal number to block, If 0, block all signals
  */
@@ -117,58 +116,83 @@ clicon_signal_unblock (int sig)
 	sigprocmask (SIG_UNBLOCK, &set, NULL);
 }
 
+/*! Read pidfile and return pid using file descriptor
+ *
+ * @param[in]  pidfile  Name of pidfile
+ * @param[out] pid      Process id of (eventual) existing daemon process
+ * @retval    0         OK. if pid > 0 old process exists w that pid
+ * @retval    -1        Error, and clicon_err() called
+ */
+int
+pidfile_get_fd(FILE  *f,
+		pid_t *pid0)
+{
+    char   *ptr;
+    char    buf[32];
+    pid_t   pid;
+    
+    *pid0 = 0;
+    ptr = fgets(buf, sizeof(buf), f);
+    if (ptr != NULL && (pid = atoi(ptr)) > 1) {
+	if (kill(pid, 0) == 0 || errno != ESRCH) {
+	    /* Yes there is a process */
+	    *pid0 = pid;
+	}
+    }
+    return 0;
+}
+
 /*! Read pidfile and return pid, if any
  *
  * @param[in]  pidfile  Name of pidfile
- * @param[out] pid0     Process id of (eventual) existing daemon process
+ * @param[out] pid      Process id of (eventual) existing daemon process
  * @retval    0         OK. if pid > 0 old process exists w that pid
  * @retval    -1        Error, and clicon_err() called
  */
 int
 pidfile_get(char  *pidfile, 
-	    pid_t *pid0)
+	    pid_t *pid)
 {
     FILE   *f;
-    char   *ptr;
-    char    buf[32];
-    pid_t   pid;
 
-    if ((f = fopen (pidfile, "r")) != NULL){
-	ptr = fgets(buf, sizeof(buf), f);
-	fclose (f);
-	if (ptr != NULL && (pid = atoi (ptr)) > 1) {
-	    if (kill (pid, 0) == 0 || errno != ESRCH) {
-		/* Yes there is a process */
-		*pid0 = pid;
-		return 0;
-	    }
-	}
+    *pid = 0;
+    if ((f = fopen(pidfile, "r")) != NULL){
+	pidfile_get_fd(f, pid);
+	fclose(f);
     }
-    *pid0 = 0;
     return 0;
 }
 
 /*! Given a pid, kill that process
+
  *
  * @param[in] pid   Process id
  * @retval    0     Killed OK
- * @retval    -1    Could not kill. 
- * Maybe shouldk not belong to pidfile code,..
+ * @retval    -1    Could not kill.
+ * Maybe should not belong to pidfile code,..
  */
 int
 pidfile_zapold(pid_t pid)
 {
+    int retval = -1;
+
     clicon_log(LOG_NOTICE, "Killing old daemon with pid: %d", pid);
     killpg(pid, SIGTERM);
     kill(pid, SIGTERM);
-    sleep(1); /* check again */
-    if ((kill (pid, 0)) != 0 && errno == ESRCH) /* Nothing there */
-	;
-    else{ /* problem: couldnt kill it */
-	clicon_err(OE_DAEMON, errno, "Killing old demon");
-	return -1;
+    /* Need to sleep process properly and then check again */
+    if (usleep(100000) < 0){
+        clicon_err(OE_UNIX, errno, "usleep");
+        goto done;
     }
-    return 0;
+    if ((kill(pid, 0)) < 0){
+        if (errno != ESRCH){
+            clicon_err(OE_DAEMON, errno, "Killing old demon");
+            goto done;
+        }
+    }
+    retval = 0;
+ done:
+    return retval;
 }
 
 /*! Write a pid-file

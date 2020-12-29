@@ -72,6 +72,7 @@
 #include "clixon_netconf_lib.h"
 #include "clixon_options.h"
 #include "clixon_xml_nsctx.h"
+#include "clixon_xml_io.h"
 #include "clixon_xpath_ctx.h"
 #include "clixon_xpath.h"
 #include "clixon_yang_module.h"
@@ -332,6 +333,7 @@ xml_yang_validate_rpc(clicon_handle h,
     cxobj     *xn;       /* rpc name */
     char      *rpcprefix;
     char      *namespace = NULL;
+    int        ret;
     
     if (strcmp(xml_name(xrpc), "rpc")){
 	clicon_err(OE_XML, EINVAL, "Expected RPC");
@@ -357,10 +359,14 @@ xml_yang_validate_rpc(clicon_handle h,
 		goto done;
 	    goto fail;
 	}
-	if ((retval = xml_yang_validate_all(h, xn, xret)) < 1) 
+	if ((ret = xml_yang_validate_all(h, xn, xret)) < 0) 
 	    goto done; /* error or validation fail */
-	if ((retval = xml_yang_validate_add(h, xn, xret)) < 1)
+	if (ret == 0)
+	    goto fail;
+	if ((ret = xml_yang_validate_add(h, xn, xret)) < 0)
 	    goto done; /* error or validation fail */
+	if (ret == 0)
+	    goto fail;
 	if (xml_default_recurse(xn, 0) < 0)
 	    goto done;
     }
@@ -369,6 +375,8 @@ xml_yang_validate_rpc(clicon_handle h,
  done:
     return retval;
  fail:
+    if (xret && *xret && clixon_xml_attr_copy(xrpc, *xret, "message-id") < 0)
+	goto done;
     retval = 0;
     goto done;
 }
@@ -646,11 +654,15 @@ check_insert_duplicate(char **vec,
  * @param[in]  xt    The parent of x
  * @param[in]  y     Its yang spec (Y_LIST)
  * @param[in]  yu    A yang unique spec (Y_UNIQUE) for unique keyword or (Y_LIST) for list keys
- * @param[out] xret    Error XML tree. Free with xml_free after use
+ * @param[out] xret  Error XML tree. Free with xml_free after use
  * @retval     1     Validation OK
  * @retval     0     Validation failed (cbret set)
  * @retval    -1     Error
  * @note It would be possible to cache the vector built below
+ * All key leafs MUST be present for all list entries.
+ * The combined values of all the leafs specified in the key are used to
+ * uniquely identify a list entry.  All key leafs MUST be given values
+ * when a list entry is created.
  */
 static int
 check_unique_list(cxobj     *x, 
@@ -658,7 +670,6 @@ check_unique_list(cxobj     *x,
 		  yang_stmt *y,
 		  yang_stmt *yu,
 		  cxobj    **xret)
-
 {
     int       retval = -1;
     cvec      *cvk; /* unique vector */
@@ -678,7 +689,11 @@ check_unique_list(cxobj     *x,
     sorted = (yang_keyword_get(yu) == Y_LIST &&
 	      yang_find(y, Y_ORDERED_BY, "user") == NULL);
     cvk = yang_cvec_get(yu);
-    vlen = cvec_len(cvk); /* nr of unique elements to check */
+    /* nr of unique elements to check */
+    if ((vlen = cvec_len(cvk)) == 0){ 
+	/* No keys: no checks necessary */
+	goto ok;
+    }
     if ((vec = calloc(vlen*xml_child_nr(xt), sizeof(char*))) == NULL){
 	clicon_err(OE_UNIX, errno, "calloc");
 	goto done;
@@ -710,6 +725,7 @@ check_unique_list(cxobj     *x,
 	x = xml_child_each(xt, x, CX_ELMNT);
 	i++;
     } while (x && y == xml_spec(x));  /* stop if list ends, others may follow */
+ ok:
     /* It would be possible to cache vec here as an optimization */
     retval = 1;
  done:

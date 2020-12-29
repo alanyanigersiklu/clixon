@@ -211,7 +211,7 @@ parse_configfile_one(const char *filename,
     cbuf  *cbret = NULL;
     int    ret;
 
-    if ((fp = fopen(filename, "r")) < 0){
+    if ((fp = fopen(filename, "r")) == NULL){
 	clicon_err(OE_UNIX, errno, "open configure file: %s", filename);
 	return -1;
     }
@@ -262,7 +262,7 @@ parse_configfile_one(const char *filename,
  *
  * @param[in]  h            Clixon handle
  * @param[in]  filename     Main configuration file
- * @param[in]  extraconfig0 Override (if set use that, othewrwise get from main file)
+ * @param[in]  extraconfig0 Override (if set use that, otherwise get from main file)
  * @param[in]  yspec        Yang spec
  * @param[out] xconfig      Pointer to xml config tree. Should be freed by caller
  * @retval     0            OK
@@ -335,10 +335,13 @@ parse_configfile(clicon_handle  h,
 	    while ((xec = xml_child_i_type(xe, 0, CX_ELMNT)) != NULL) {
 		name = xml_name(xec);
 		body = xml_body(xec);
+		/* Ignore non-leafs */
+		if (name == NULL || body == NULL)
+		    continue;
 		/* Ignored from file due to bootstrapping */
 		if (strcmp(name,"CLICON_CONFIGFILE")==0)
 		    continue;
-		/* List options for configure options that are leaf-lists: append to main */
+		/* List options for configure options that are lists or leaf-lists: append to main */
 		if (strcmp(name,"CLICON_FEATURE")==0 ||
 		    strcmp(name,"CLICON_YANG_DIR")==0){
 		    if (xml_addsub(xt, xec) < 0)
@@ -375,11 +378,9 @@ parse_configfile(clicon_handle  h,
     while ((x = xml_child_each(xt, x, CX_ELMNT)) != NULL) {
 	name = xml_name(x);
 	body = xml_body(x);
-	if (name == NULL || body == NULL){
-	    clicon_log(LOG_WARNING, "%s option NULL: name:%s body:%s",
-		       __FUNCTION__, name, body);
+	/* Ignore non-leafs */
+	if (name == NULL || body == NULL)
 	    continue;
-	}
 	/* Ignored from file due to bootstrapping */
 	if (strcmp(name,"CLICON_CONFIGFILE")==0)
 	    continue;
@@ -390,7 +391,6 @@ parse_configfile(clicon_handle  h,
 	    continue;
 	if (strcmp(name,"CLICON_YANG_DIR")==0)
 	    continue;
-
 	if (clicon_hash_add(copt, 
 			    name,
 			    body,
@@ -805,8 +805,10 @@ clicon_sock_family(clicon_handle h)
 	return AF_INET;
     else  if (strcmp(s, "IPv6")==0)
 	return AF_INET6;
+    else if (strcmp(s, "UNIX")==0)
+	return AF_UNIX;
     else
-	return AF_UNIX; /* default */
+	return -1;
 }
 
 /*! Get port for backend socket in case of AF_INET or AF_INET6 

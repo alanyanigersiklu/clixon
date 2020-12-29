@@ -26,6 +26,7 @@ cat <<EOF > $cfg
   <CLICON_XMLDB_DIR>$dir</CLICON_XMLDB_DIR>
   <CLICON_NACM_MODE>internal</CLICON_NACM_MODE>
   <CLICON_NACM_DISABLED_ON_EMPTY>true</CLICON_NACM_DISABLED_ON_EMPTY>
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -69,6 +70,7 @@ NACM0="<nacm xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">
    </rule-list>
  </nacm>
 "
+
 cat<<EOF > $startupdb
 <config>
    $NACM0
@@ -117,7 +119,7 @@ if [ $RC -ne 0 ]; then
     new "start restconf daemon (-a is enable basic authentication)"
     start_restconf -f $cfg -- -a 
 
-    new "waiting"
+    new "waiting restconf"
     wait_restconf
 fi
 
@@ -233,6 +235,12 @@ expectpart "$(curl -u andy:bar $CURLOPTS -X PATCH -H 'Content-Type: application/
 
 new "The key leaf values MUST be the same as the key leaf values in the request"
 expectpart "$(curl -u andy:bar $CURLOPTS -X PATCH  -H "Content-Type: application/yang-data+json" $RCPROTO://localhost/restconf/data/example-jukebox:jukebox/library/artist=Clash/album=London%20Calling -d '{"example-jukebox:album":{"name":"The Clash"}}')" 0 'HTTP/1.1 412 Precondition Failed'
+
+new "PATCH on root resource extra c" # merge extra/c
+expectpart "$(curl -u andy:bar $CURLOPTS -X PATCH  -H "Content-Type: application/yang-data+json" $RCPROTO://localhost/restconf/data -d '{"ietf-restconf:data":{"example-jukebox:extra":"c"}}')" 0 "HTTP/1.1 204 No Content"
+
+new "GET check" # XXX: "data" should probably be namespaced?
+expectpart "$(curl -u andy:bar $CURLOPTS -X GET $RCPROTO://localhost/restconf/data?content=config -H 'Accept: application/yang-data+xml')" 0 'HTTP/1.1 200 OK' '<extra xmlns="http://example.com/ns/example-jukebox">c</extra>' '<data>'
 
 if [ $RC -ne 0 ]; then
     new "Kill restconf daemon"

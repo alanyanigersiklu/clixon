@@ -49,6 +49,8 @@ else
 DOCKERFILE      = Dockerfile
 endif
 
+#DOCKERFLAGS="--no-cache"
+
 # Example docker image. CHANGE THIS IF YOU PUSH
 IMG   = clixon/clixon-system
 
@@ -70,7 +72,7 @@ distclean: clean
 	rm -f Makefile *~ .depend
 
 docker: clixon $(DOCKERFILE)
-	sudo docker build -f $(DOCKERFILE) -t $(IMG) .  # --no-cache
+	sudo docker build -f $(DOCKERFILE) -t $(IMG)  $(DOCKERFLAGS) .
 
 push:
 	sudo docker push $(IMG)
@@ -81,7 +83,7 @@ push:
 #      therefore the sleep 1 before tests start
 test: docker
 	./cleanup.sh ; ./start.sh # kill (ignore error) and the start it
-	sudo docker exec -t clixon-system bash -c 'sleep 1 && cd /usr/local/bin/test && ./all.sh'
+	sudo docker exec -t clixon-system bash -c 'sleep 2 && cd /usr/local/bin/test && ./all.sh'
 
 depend:
 

@@ -11,7 +11,7 @@ s="$_" ; . ./lib.sh || if [ "$s" = $0 ]; then exit 0; else return 0; fi
 : ${format:=xml}
 
 # Number of list/leaf-list entries in file
-: ${perfnr:=10000}
+: ${perfnr:=20000}
 
 # Number of requests made get/put
 : ${perfreq:=10}
@@ -21,6 +21,7 @@ s="$_" ; . ./lib.sh || if [ "$s" = $0 ]; then exit 0; else return 0; fi
 # so we use time -p for POSIX compliance and awk to get wall clock time
 # Note sometimes time -p is used and sometimes $TIMEFN, cant get it to work same everywhere
 : ${TIMEFN:=time -p} # portability: 2>&1 | awk '/real/ {print $2}'
+if ! $TIMEFN true; then err "A working time function" "'$TIMEFN' does not work"; fi
 
 APPNAME=example
 
@@ -68,6 +69,7 @@ cat <<EOF > $cfg
   <CLICON_CLISPEC_DIR>/usr/local/lib/example/clispec</CLICON_CLISPEC_DIR>
   <CLICON_CLI_LINESCROLLING>0</CLICON_CLI_LINESCROLLING>
   <CLICON_FEATURE>ietf-netconf:startup</CLICON_FEATURE>
+  $RESTCONFIG
 </clixon-config>
 EOF
 

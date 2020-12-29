@@ -145,6 +145,7 @@ testrun()
   <CLICON_RESTCONF_PRETTY>false</CLICON_RESTCONF_PRETTY>
   <CLICON_YANG_UNKNOWN_ANYDATA>$unknown</CLICON_YANG_UNKNOWN_ANYDATA>
   $F
+  $RESTCONFIG
 </clixon-config>
 EOF
 
@@ -175,6 +176,7 @@ EOF
 	new "waiting"
 	wait_backend
     fi
+
     if [ $RC -ne 0 ]; then
 	new "kill old restconf daemon"
 	stop_restconf_pre
@@ -185,7 +187,6 @@ EOF
     fi
     new "wait restconf"
     wait_restconf
-
 
     if ! $startup; then # If not startup, add xml using netconf
 	new "Put anydata"

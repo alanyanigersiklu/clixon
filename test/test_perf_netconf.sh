@@ -11,7 +11,7 @@ s="$_" ; . ./lib.sh || if [ "$s" = $0 ]; then exit 0; else return 0; fi
 : ${format:=xml}
 
 # Number of list/leaf-list entries in file
-: ${perfnr:=10000}
+: ${perfnr:=20000}
 
 # Number of requests made get/put
 : ${perfreq:=10}
@@ -20,7 +20,9 @@ s="$_" ; . ./lib.sh || if [ "$s" = $0 ]; then exit 0; else return 0; fi
 # -f %e gives elapsed wall clock time but is not available on all systems
 # so we use time -p for POSIX compliance and awk to get wall clock time
 # Note sometimes time -p is used and sometimes $TIMEFN, cant get it to work same everywhere
+# time function (this is a mess to get right on freebsd/linux)
 : ${TIMEFN:=time -p} # portability: 2>&1 | awk '/real/ {print $2}'
+if ! $TIMEFN true; then err "A working time function" "'$TIMEFN' does not work"; fi
 
 APPNAME=example
 

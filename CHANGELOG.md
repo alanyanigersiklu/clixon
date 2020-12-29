@@ -1,6 +1,7 @@
 # Clixon Changelog
 
-* [4.9.0](#490) Expected 15 December 2020
+* [4.10.0](#4100) Expected: February
+* [4.9.0](#490) 18 December 2020
 * [4.8.0](#480) 18 October 2020
 * [4.7.0](#470) 14 September 2020
 * [4.6.0](#460) 14 August 2020
@@ -25,18 +26,10 @@
 * [3.3.2](#332) Aug 27 2017
 * [3.3.1](#331) June 7 2017
 
-## 4.9.0 Expected: 15 Dec 2020
+## 4.10.0
+Expected: February 2021
 
 ### New features
-
-* Initial NBMA functionality (thanks: @benavrhm): "ds" resource
-* Restconf configuration has a new configure model: `clixon-restconf.yang` enabling restconf daemon configuration from datastore instead of from config file. 
-  * Restconf config data, such as addresses, authentication type, etc, is read from the backend datastore instead of the clixon-config file on startup.
-  * This is enabled by setting `CLIXON_RESTCONF_CONFIG` to true (or start clixon-restconf with `-b`), in which case restconf data can be set in the datastore.
-  * This only applies to the evhtp restconf daemon, not fcgi/nginx.
-  * If enabled, most RESTCONF clixon-config options are obsolete
-  * Thanks to Dave Cornejo for the idea
-  * Example: instead of setting `<CLICON_SSL_SERVER_CERT>file</CLICON_SSL_SERVER_CERT>` in clixon.xml, set: `arestconf><socket><server-cert-path>file</server-cert-path></socket></restconf>` in the running datastore before starting restconf.
 
 * Prototype of collection draft
   * This is prototype work for ietf netconf work
@@ -44,30 +37,100 @@
   * New yang: ietf-restconf-collection@2020-10-22.yang
   * New http media: application/yang.collection+xml/json
 
+### C/CLI-API changes on existing features
+
+Developers may need to change their code
+
+* Added `cvv_i` output parameter to `api_path_fmt2api_path()` to see how many cvv entries were used.
+
 ### API changes on existing protocol/config features
 
 Users may have to change how they access the system
 
+* CLIspec dbxml API: Ability to specify deletion of _any_ vs _specific_ entry.
+  * In a cli_del() call, the cvv arg list either exactly matches the api-format-path in which case _any_ deletion is specified, otherwise, if there is an extra element in the cvv list, that is used for a specific delete.
+
+### Corrected Bugs
+
+* [Presence container configs not displayed in 'show config set' #164 ](https://github.com/clicon/clixon/issues/164)
+  * Treat presence container as a leaf: always print a placeholder regardless if it has children or not. An extra check for children could have been made to not print if it has, but this adds an extra minor complexity.
+
+## 4.9.0
+18 December 2020
+
+### New features
+
+* New process-control RPC feature in clixon-lib.yang to manage processes
+  * This is an alternative to manage a clixon daemon direct via systemd, containerd or other ways to manage processes
+  * One important special case is starting the clixon-restconf daemon internally
+  * This is how it works:
+    * Register a process via `clixon_process_register(h, name, namespace, argv, argc)`
+    * Use process-control RPC defined in clixon-lib.yang to start/stop/restart or query status on that process
+  * Enable in backend for starting restconf internally using `CLICON_BACKEND_RESTCONF_PROCESS`.
+* New YANG extension functionality: mark YANG and use in plugins
+  * Documentation: https://clixon-docs.readthedocs.io/en/latest/misc.html#extensions
+  * As one usage of this extensions, the `autocli-op` extension has been added to annotate YANG with autocli properties, "hidden" commands being the first function.
+  * See [Augment auto-cli for hiding/modifying cli syntax #156](https://github.com/clicon/clixon/issues/156) and [hiding auto-generated CLI entries #153](https://github.com/clicon/clixon/issues/153)
+* New restconf configuration model: `clixon-restconf.yang`
+  * The new restconf config, including addresses, authentication type, is set either in clixon-config local config or in backend datastore (ie running)
+  * This only applies to the evhtp restconf daemon, not fcgi/nginx, where the nginx config is used.
+  * The RESTCONF clixon-config options are obsolete
+  * Thanks to Dave Cornejo for the idea
+
+### API changes on existing protocol/config features
+
+Users may have to change how they access the system
+
+* New clixon-lib@2020-12-08.yang revision
+  * Added: autocli-op extension (see new features)
+  * Added: rpc process-control for process/daemon management
 * New clixon-config@2020-11-03.yang revision
-  * Added option: `CLICON_RESTCONF_CONFIG` for reading restconf daemon config frm datastore
+  * Added `CLICON_BACKEND_RESTCONF_PROCESS`
+  * Moved to clixon-restconf.yang, still remains but marked as obsolete:
+    - `CLICON_RESTCONF_IPV4_ADDR`
+    - `CLICON_RESTCONF_IPV6_ADDR`
+    - `CLICON_RESTCONF_HTTP_PORT`
+    - `CLICON_RESTCONF_HTTPS_PORT`
+    - `CLICON_SSL_SERVER_CERT`
+    - `CLICON_SSL_SERVER_KEY`
+    - `CLICON_SSL_CA_CERT`
+  * Removed obsolete option 'CLICON_TRANSACTION_MOD`;
 
 ### C/CLI-API changes on existing features
 
 Developers may need to change their code
 
-* Added by-ref parameter to `ys_cv_validate()` returning which sub-yang spec was validated in a union.
+* Auto-cli changed signature of `yang2cli()`.
+* Added by-ref parameter to `ys_cv_validate()` returning sub-yang spec was validated in a union.
 * Changed first parameter from `int fd` to `FILE *f` in the following functions:
-  * clixon_xml_parse_file(), clixon_json_parse_file(), yang_parse_file()
-  * See [Bytewise read() of files is slow #146](https://github.com/clicon/clixon/issues/146)
+  * `clixon_xml_parse_file()`, `clixon_json_parse_file()`, `yang_parse_file()`
 
 ### Minor changes
 
+* Initial NBMA functionality (thanks: @benavrhm): "ds" resource
+* Support for building static lib: `LINKAGE=static configure`
+  * One usecase is coverage and fuzzing
+* Change comment character to be active anywhere to beginning of _word_ only.
+  * ' # This is a comment', but ' This# is not a comment'
+  * See [Change CLIgen comments](https://github.com/clicon/cligen/issues/55)
 * Improved performance of parsing files as described in [Bytewise read() of files is slow #146](https://github.com/clicon/clixon/issues/146), thanks: @hjelmeland
-* Added new backend plugin: ca_pre-demon called if backend is daemonized just prior to forking.
-* Added XPATH functions `position`
+* Added new backend plugin: `ca_pre-demon` when backend is daemonized just prior to forking.
+* Added XPATH function `position`
+* Added new revision of main example yang: `clixon-example@2020-12-01.yang`
 
 ### Corrected Bugs
 
+* [Delete and show config are oblivious to the leaf value #157](https://github.com/clicon/clixon/issues/157)
+  * Added equality of values necessary condition in edit-config delete/remove of leafs
+* Fixed error memory in RESTCONF PATCH/PUT when accessing top-level data node.
+* Fixed: [ Calling copy-config RPC from restconf #158](https://github.com/clicon/clixon/issues/158)
+* Fixed: [namespace prefix nc is not supported in full #154](https://github.com/clicon/clixon/issues/154)
+  * edit-config "config" parameter did not work with prefix other than null
+* Fixed [YANG: key statement in rpc/notification list #148](https://github.com/clicon/clixon/issues/148)
+  * Do not check uniqueness among lists without keys
+* Fixed typo: [False Header Content_type in restconf error #152](https://github.com/clicon/clixon/issues/152)
+* Added message-id attributes in error and hello replies
+  * See [namespace prefix nc is not supported in full #154](https://github.com/clicon/clixon/issues/154)
 * Fixed [Clixon backend generates wrong XML on empty string value #144](https://github.com/clicon/clixon/issues/144)
 
 ## 4.8.0
