@@ -58,6 +58,7 @@ cat <<EOF > $cfg
   <CLICON_BACKEND_PIDFILE>/usr/local/var/$APPNAME/$APPNAME.pidfile</CLICON_BACKEND_PIDFILE>
   <CLICON_XMLDB_DIR>$dir</CLICON_XMLDB_DIR>
   <CLICON_MODULE_LIBRARY_RFC7895>true</CLICON_MODULE_LIBRARY_RFC7895>
+  <CLICON_RESTCONF_INSTALLDIR>/usr/local/sbin</CLICON_RESTCONF_INSTALLDIR>
   <!-- start restconf from backend -->
   <CLICON_BACKEND_RESTCONF_PROCESS>true</CLICON_BACKEND_RESTCONF_PROCESS>
 </clixon-config>
@@ -483,6 +484,9 @@ fi
 new "kill restconf"
 sleep $DEMSLEEP
 stop_restconf
+
+new "Start backend with wrong restconf bindir"
+expectpart "$(sudo $clixon_backend -Fs init -f $cfg -l o -o CLICON_RESTCONF_INSTALLDIR=/usr/local/xxxx)" 255 "FATAL: /usr/local/xxxx/clixon_restconf" "No such file or directory"
 
 new "endtest"
 endtest

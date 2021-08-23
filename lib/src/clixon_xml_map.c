@@ -608,7 +608,10 @@ xml_diff1(cxobj     *x0,
 		b2 = xml_body(x1c);
 		if (b1 == NULL && b2 == NULL)
 		    ;
-		else if (b1 == NULL || b2 == NULL || strcmp(b1, b2) != 0){
+		else if (b1 == NULL || b2 == NULL
+			 || strcmp(b1, b2) != 0 
+			 || strcmp(xml_name(x0c), xml_name(x1c)) != 0 /* Ex: choice { a:bool; b:bool } */
+			 ){
 		    if (cxvec_append(x0c, changed_x0, changedlen) < 0) 
 			goto done;
 		    (*changedlen)--; /* append two vectors */
@@ -2154,6 +2157,10 @@ yang_enum_int_value(cxobj   *node,
     if (yang_type_resolve(ys, ys, ytype, &yrestype, 
 			  NULL, NULL, NULL, NULL, NULL) < 0)
 	goto done;
+    if (yrestype == NULL){
+	clicon_err(OE_YANG, 0, "result-type should not be NULL");
+	goto done;
+    }
     if (yrestype==NULL || strcmp(yang_argument_get(yrestype), "enumeration"))
 	goto done;
     if ((yenum = yang_find(yrestype, Y_ENUM, xml_body(node))) == NULL)
@@ -2327,3 +2334,4 @@ yang_check_when_xpath(cxobj        *xn,
 	xml_nsctx_free(nsc);
     return retval;
 }
+

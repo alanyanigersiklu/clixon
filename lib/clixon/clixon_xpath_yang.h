@@ -2,8 +2,8 @@
  *
   ***** BEGIN LICENSE BLOCK *****
  
-  Copyright (C) 2009-2019 Olof Hagsand
-  Copyright (C) 2020-2021 Olof Hagsand and Rubicon Communications, LLC(Netgate)
+  Copyright (C) 2017-2019 Olof Hagsand
+  Copyright (C) 2020-2021 Olof Hagsand and Rubicon Communications, LLC (Netgate)
 
   This file is part of CLIXON.
 
@@ -32,34 +32,16 @@
 
   ***** END LICENSE BLOCK *****
 
- * Restconf method implementation  
+ * Clixon XML XPATH 1.0 according to https://www.w3.org/TR/xpath-10
+ * Note: for YANG which is constrained to path-arg as defined in rfc7950
+ * See: clixon_xpath.[ch] for full XML XPATH implementation
  */
-
-
-#ifndef _RESTCONF_METHODS_H_
-#define _RESTCONF_METHODS_H_
+#ifndef _CLIXON_XPATH_YANG_H
+#define _CLIXON_XPATH_YANG_H
 
 /*
  * Prototypes
  */
-int api_data_options(clicon_handle h, void *req);
-int api_data_write(clicon_handle h, void *req, char *api_path0, 
-		   cvec *pcvec, int pi,
-		   cvec *qvec, char *data,
-		   int pretty, restconf_media media_in, restconf_media media_out,
-		   int plain_patch, ietf_ds_t ds);
+int yang_path_arg(yang_stmt *ys, const char *xpath, yang_stmt **yref);
 
-int api_data_put(clicon_handle h, void *req, char *api_path, 
-		 cvec *pcvec, int pi, 
-		 cvec *qvec, char *data,
-		 int pretty, restconf_media media_out, ietf_ds_t ds);
-
-int api_data_patch(clicon_handle h, void *req, char *api_path, 
-		   cvec *pcvec, int pi, 
-		   cvec *qvec, char *data, int pretty,
-		   restconf_media media_out, ietf_ds_t ds);
-
-int api_data_delete(clicon_handle h, void *req, char *api_path, int pi,
-		    int pretty, restconf_media media_out, ietf_ds_t ds);
-
-#endif /* _RESTCONF_METHODS_H_ */
+#endif /* _CLIXON_XPATH_YANG_H */

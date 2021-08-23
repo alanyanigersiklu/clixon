@@ -35,7 +35,18 @@ Expected: September, 2021
 
 ### New features
 
-* Restconf YANG PATCH according to RFC 8072
+* YANG Leafref feature update
+  * Closer adherence to RFC 7950. Some of this is changed behavior, some is new feature.
+  * Essentially instead of looking at the referring leaf, context is referred(target) node
+  * Validation uses referred node
+    * Validation changed to use type of referred node, instead of just "string"
+  * Auto-cli
+    * Changed to use type of referred node for typecheck
+    * Completion uses referred node
+  * Required instance / less strict validation
+    * New: Leafrefs must refer to existing data leaf ONLY IF YANG `required-instance` is true
+    * Previous: All leafrefs must refer to existing data leaf node
+* Restconf YANG PATCH according to RFC 8072 (Work in progress)
   * Experimental: enable by setting YANG_PATCH in include/clixon_custom.h
   * Thanks to Alan Yaniger for providing this patch
 
@@ -43,6 +54,9 @@ Expected: September, 2021
 
 Users may have to change how they access the system
 
+* See changes under new feature "YANG leafref feature update"
+  * Validation of referred node type (not referring)
+  * Leafref required-instance must be set to make strict data-node check
 * Native Restconf is now default, not fcgi/nginx
   * That is, to configure with fcgi, you need to explicitly configure: `--with-restconf=fcgi`
 * New clixon-config@2021-07-11.yang revision
@@ -51,11 +65,18 @@ Users may have to change how they access the system
 
 ### Minor features
 
+* Restconf internal start: fail early if clixon_restconf binary is not found
+  * If CLICON_BACKEND_RESTCONF_PROCESS is true
 * Added linenumbers to all YANG symbols for better debug and errors
   * Improved error messages for YANG identityref:s and leafref:s by adding original line numbers
 
 ### Corrected Bugs
 
+* Fixed: Netconf diff callback did not work with choice and same value replace
+  * Eg if YANG is `choice c { leaf x; leaf y }` and XML changed from `<x>42</x>` to `<y>42</y>` the datastrore changed, but was not detected by diff algorithms and provided to validate callbacks.
+  * Thanks: Alexander Skorichenko, Netgate
+* Fixed: [Autocli does not offer completions for leafref to identityref #254](https://github.com/clicon/clixon/issues/254)
+  * This is a part of YANG Leafref feature update
 * Fixed: [clixon_netconf errors on client XML Declaration with valid encoding spec](https://github.com/clicon/clixon/issues/250)
 * Fixed: Yang patterns: \n and other non-printable characters were broken
   * Example: Clixon interpereted them two characters: `\\ n` instead of ascii 10
